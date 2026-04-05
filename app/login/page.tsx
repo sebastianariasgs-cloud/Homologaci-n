@@ -16,23 +16,36 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
-    if (error) {
+    if (authError) {
       setError('Correo o contraseña incorrectos')
       setLoading(false)
-    } else {
-      router.push('/dashboard')
+      return
+    }
+
+    if (data.user) {
+      const { data: perfil } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', data.user.id)
+        .single()
+
+      if (perfil?.rol === 'evaluador') {
+        router.push('/evaluador')
+      } else {
+        router.push('/dashboard')
+      }
     }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 w-full max-w-md">
-        
+
         <div className="mb-8">
           <h1 className="text-2xl font-semibold text-gray-900">Bienvenido</h1>
           <p className="text-gray-500 text-sm mt-1">Plataforma de homologación de proveedores</p>

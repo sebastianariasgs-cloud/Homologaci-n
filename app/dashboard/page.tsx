@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import Notificaciones from '../components/Notificaciones'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -58,6 +59,8 @@ export default function DashboardPage() {
             <p className="text-sm font-medium text-gray-900">{proveedor?.razon_social}</p>
             <p className="text-xs text-gray-400">RUC {proveedor?.ruc}</p>
           </div>
+          <Notificaciones proveedorId={proveedor?.id} />
+
           <button
             onClick={handleLogout}
             className="text-sm text-gray-500 hover:text-red-500 transition"
