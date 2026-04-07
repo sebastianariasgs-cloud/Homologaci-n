@@ -116,12 +116,26 @@ export default function DocumentosPage() {
     await cargarDatos()
   }
 
+  const eliminarConductor = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este conductor y todos sus documentos?')) return
+    await supabase.from('documentos_conductor').delete().eq('conductor_id', id)
+    await supabase.from('conductores').update({ activo: false }).eq('id', id)
+    await cargarDatos()
+  }
+
   const agregarUnidad = async () => {
     if (!nuevaUnidad.trim() || !proveedor) return
     setAgregandoUnidad(true)
     await supabase.from('unidades').insert({ proveedor_id: proveedor.id, placa: nuevaUnidad.trim().toUpperCase() })
     setNuevaUnidad('')
     setAgregandoUnidad(false)
+    await cargarDatos()
+  }
+
+  const eliminarUnidad = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar esta unidad y todos sus documentos?')) return
+    await supabase.from('documentos_unidad').delete().eq('unidad_id', id)
+    await supabase.from('unidades').update({ activo: false }).eq('id', id)
     await cargarDatos()
   }
 
@@ -211,20 +225,12 @@ export default function DocumentosPage() {
                 </span>
               )}
             </div>
-
-            {/* Botón de descarga de formato */}
             {formato && !estado && (
               <a href={formato} download
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '4px',
-                  fontSize: '11px', color: '#185FA5', fontWeight: 600,
-                  marginTop: '5px', textDecoration: 'none',
-                  background: '#E6F1FB', padding: '3px 10px', borderRadius: '6px'
-                }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#185FA5', fontWeight: 600, marginTop: '5px', textDecoration: 'none', background: '#E6F1FB', padding: '3px 10px', borderRadius: '6px' }}>
                 ↓ Descargar formato
               </a>
             )}
-
             {doc?.fecha_emision && (
               <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
                 Emisión: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
@@ -232,23 +238,18 @@ export default function DocumentosPage() {
               </p>
             )}
             {estado === 'rechazado' && doc?.comentario && (
-              <p style={{ fontSize: '11px', color: '#C41230', marginTop: '4px' }}>
-                💬 Motivo: {doc.comentario}
-              </p>
+              <p style={{ fontSize: '11px', color: '#C41230', marginTop: '4px' }}>💬 Motivo: {doc.comentario}</p>
             )}
             {estado === 'aprobado' && !puede && (
-              <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                🔒 Podrás renovar cuando falten 5 días o menos para el vencimiento
-              </p>
+              <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>🔒 Podrás renovar cuando falten 5 días o menos para el vencimiento</p>
             )}
           </div>
-
           <div style={{ flexShrink: 0 }}>
             {boton ? (
               <label style={{
                 cursor: boton.disabled ? 'not-allowed' : 'pointer',
-                fontSize: '12px', fontWeight: 600, padding: '7px 14px',
-                borderRadius: '7px', background: boton.bg, color: boton.color,
+                fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '7px',
+                background: boton.bg, color: boton.color,
                 border: (boton as any).border || 'none', display: 'inline-block',
                 opacity: boton.disabled ? 0.6 : 1
               }}>
@@ -302,12 +303,7 @@ export default function DocumentosPage() {
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {DOCS_INFORMATIVOS.map(doc => (
               <a key={doc.nombre} href={doc.archivo} download
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  background: 'white', border: '1px solid #B5D4F4', borderRadius: '8px',
-                  padding: '8px 14px', textDecoration: 'none', color: '#0C447C',
-                  fontSize: '12px', fontWeight: 600
-                }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'white', border: '1px solid #B5D4F4', borderRadius: '8px', padding: '8px 14px', textDecoration: 'none', color: '#0C447C', fontSize: '12px', fontWeight: 600 }}>
                 ↓ {doc.nombre}
                 <span style={{ fontSize: '10px', color: '#888', fontWeight: 400 }}>— {doc.desc}</span>
               </a>
@@ -374,11 +370,17 @@ export default function DocumentosPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {conductores.map((conductor) => (
               <div key={conductor.id} style={{ border: '1px solid #F0F0F0', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                  <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#C41230', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 700 }}>
-                    {conductor.nombre_completo.charAt(0).toUpperCase()}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#C41230', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px', fontWeight: 700 }}>
+                      {conductor.nombre_completo.charAt(0).toUpperCase()}
+                    </div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>{conductor.nombre_completo}</span>
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>{conductor.nombre_completo}</span>
+                  <button onClick={() => eliminarConductor(conductor.id)}
+                    style={{ fontSize: '11px', color: '#C41230', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>
+                    Eliminar
+                  </button>
                 </div>
                 {DOCS_CONDUCTOR.map(doc => {
                   const key = `${conductor.id}-${doc.nombre}`
@@ -422,11 +424,17 @@ export default function DocumentosPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {unidades.map((unidad) => (
               <div key={unidad.id} style={{ border: '1px solid #F0F0F0', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                  <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#4A4A4A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px' }}>
-                    🚛
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#4A4A4A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px' }}>
+                      🚛
+                    </div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Placa: {unidad.placa}</span>
                   </div>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Placa: {unidad.placa}</span>
+                  <button onClick={() => eliminarUnidad(unidad.id)}
+                    style={{ fontSize: '11px', color: '#C41230', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>
+                    Eliminar
+                  </button>
                 </div>
                 {DOCS_UNIDAD.map(doc => {
                   const key = `${unidad.id}-${doc.nombre}`
