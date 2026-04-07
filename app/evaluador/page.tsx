@@ -40,6 +40,13 @@ const estadoColor: { [key: string]: string } = {
   homologado: 'bg-blue-50 text-blue-700',
 }
 
+const estadoBadge: { [key: string]: { bg: string, color: string } } = {
+  pendiente: { bg: '#FFF7ED', color: '#C2410C' },
+  aprobado: { bg: '#F0FDF4', color: '#15803D' },
+  rechazado: { bg: '#FEF2F2', color: '#C41230' },
+  homologado: { bg: '#EFF6FF', color: '#1D4ED8' },
+}
+
 const estadoTexto: { [key: string]: string } = {
   pendiente: 'Pendiente',
   aprobado: 'Aprobado',
@@ -47,7 +54,6 @@ const estadoTexto: { [key: string]: string } = {
   homologado: 'Homologado',
 }
 
-// ── Componente de fecha fuera del render principal ──
 function CampoFecha({ docKey, tipo, onUpdate }: {
   docKey: string
   tipo: 'emision' | 'vencimiento'
@@ -74,17 +80,18 @@ function CampoFecha({ docKey, tipo, onUpdate }: {
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <input type="text" placeholder="DD/MM/AAAA" value={inputVal}
         maxLength={10} onChange={handleChange}
-        className={`w-28 text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500
-          ${error ? 'border-red-400' : 'border-gray-200'}`} />
-      {error && <span className="text-xs text-red-500">{error}</span>}
+        style={{
+          width: '110px', fontSize: '11px', border: `1px solid ${error ? '#FECACA' : '#E8E8E8'}`,
+          borderRadius: '6px', padding: '4px 8px', outline: 'none'
+        }} />
+      {error && <span style={{ fontSize: '10px', color: '#C41230' }}>{error}</span>}
     </div>
   )
 }
 
-// ── Componente de fila fuera del render principal ──
 function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAprobar, onRechazar, onVerDoc }: any) {
   const [comentario, setComentario] = useState('')
   const [fechaEmision, setFechaEmision] = useState('')
@@ -92,74 +99,71 @@ function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAproba
   const key = `${keyPrefix}-${doc.nombre}`
   const esProcesando = procesando === key
 
-  const handleFechaUpdate = (docKey: string, tipo: string, valor: string) => {
+  const handleFechaUpdate = (_: string, tipo: string, valor: string) => {
     if (tipo === 'emision') setFechaEmision(valor)
     if (tipo === 'vencimiento') setFechaVencimiento(valor)
   }
 
+  const badge = estadoBadge[doc.estado] || estadoBadge.pendiente
+
   return (
-    <div className="border border-gray-100 rounded-lg p-3 mb-2">
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+    <div style={{ border: '1px solid #F0F0F0', borderRadius: '8px', padding: '12px', marginBottom: '8px', background: 'white' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <span className="text-sm font-medium text-gray-800">{doc.nombre}</span>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a' }}>{doc.nombre}</span>
           {doc.fecha_emision && (
-            <span className="ml-2 text-xs text-gray-400">
+            <span style={{ fontSize: '10px', color: '#888', marginLeft: '8px' }}>
               Emisión: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
             </span>
           )}
           {doc.fecha_vencimiento && (
-            <span className="ml-2 text-xs text-gray-400">
+            <span style={{ fontSize: '10px', color: '#888', marginLeft: '6px' }}>
               Vence: {new Date(doc.fecha_vencimiento).toLocaleDateString('es-PE')}
             </span>
           )}
         </div>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${estadoColor[doc.estado] || estadoColor.pendiente}`}>
+        <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
           {estadoTexto[doc.estado] || 'En revisión'}
         </span>
       </div>
 
       {tieneVencimiento && (
-        <div className="flex items-center gap-4 mb-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Emisión:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '10px', color: '#888' }}>Emisión:</span>
             <CampoFecha docKey={key} tipo="emision" onUpdate={handleFechaUpdate} />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Vencimiento:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '10px', color: '#888' }}>Vencimiento:</span>
             <CampoFecha docKey={key} tipo="vencimiento" onUpdate={handleFechaUpdate} />
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
         {doc.url && (
           <button onClick={() => onVerDoc(doc.url)}
-            className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50 transition">
+            style={{ fontSize: '11px', color: '#185FA5', background: '#E6F1FB', border: 'none', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
             Ver archivo
           </button>
         )}
-        <input
-          type="text"
-          placeholder="Comentario (obligatorio para rechazar)"
+        <input type="text" placeholder="Comentario (obligatorio para rechazar)"
           value={comentario}
           onChange={(e) => setComentario(e.target.value)}
-          className="flex-1 min-w-32 text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <button
-          disabled={esProcesando || !doc.url}
+          style={{ flex: 1, minWidth: '160px', fontSize: '11px', border: '1px solid #E8E8E8', borderRadius: '6px', padding: '5px 10px', outline: 'none' }} />
+        <button disabled={esProcesando || !doc.url}
           onClick={() => onAprobar(tabla, doc, key, tieneVencimiento, fechaEmision, fechaVencimiento, comentario)}
-          className="text-xs bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 transition disabled:opacity-40">
+          style={{ fontSize: '11px', background: '#16A34A', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, opacity: (esProcesando || !doc.url) ? 0.4 : 1 }}>
           {esProcesando ? '...' : 'Aprobar'}
         </button>
-        <button
-          disabled={esProcesando || !doc.url || !comentario}
+        <button disabled={esProcesando || !doc.url || !comentario}
           onClick={() => onRechazar(tabla, doc, key, comentario)}
-          className="text-xs bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-600 transition disabled:opacity-40">
+          style={{ fontSize: '11px', background: '#C41230', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, opacity: (esProcesando || !doc.url || !comentario) ? 0.4 : 1 }}>
           {esProcesando ? '...' : 'Rechazar'}
         </button>
       </div>
       {!comentario && (
-        <p className="text-xs text-gray-400 mt-1">* Comentario obligatorio para rechazar</p>
+        <p style={{ fontSize: '10px', color: '#AAA', marginTop: '4px' }}>* Comentario obligatorio para rechazar</p>
       )}
     </div>
   )
@@ -176,6 +180,8 @@ export default function EvaluadorPage() {
   const [docsConductor, setDocsConductor] = useState<any[]>([])
   const [docsUnidad, setDocsUnidad] = useState<any[]>([])
   const [procesando, setProcesando] = useState<string | null>(null)
+  const [almacenes, setAlmacenes] = useState<any[]>([])
+  const [tipoProveedor, setTipoProveedor] = useState<string>('')
 
   useEffect(() => { verificarRol() }, [])
 
@@ -197,6 +203,8 @@ export default function EvaluadorPage() {
 
   const seleccionarProveedor = async (prov: any) => {
     setSeleccionado(prov)
+    setAlmacenes([])
+    setTipoProveedor('')
 
     const { data: docs } = await supabase
       .from('documentos').select('*').eq('proveedor_id', prov.id)
@@ -215,17 +223,25 @@ export default function EvaluadorPage() {
       const { data: dc } = await supabase
         .from('documentos_conductor').select('*').in('conductor_id', ids)
       setDocsConductor(dc || [])
-    } else {
-      setDocsConductor([])
-    }
+    } else { setDocsConductor([]) }
 
     if (units && units.length > 0) {
       const ids = units.map((u: any) => u.id)
       const { data: du } = await supabase
         .from('documentos_unidad').select('*').in('unidad_id', ids)
       setDocsUnidad(du || [])
+    } else { setDocsUnidad([]) }
+
+    const { data: alms } = await supabase
+      .from('almacenes_proveedor').select('nombre').eq('proveedor_id', prov.id)
+    setAlmacenes(alms || [])
+
+    if (prov.tipo_id) {
+      const { data: tipo } = await supabase
+        .from('tipos_proveedor').select('nombre').eq('id', prov.tipo_id).single()
+      setTipoProveedor(tipo?.nombre || 'No especificado')
     } else {
-      setDocsUnidad([])
+      setTipoProveedor('No especificado')
     }
   }
 
@@ -253,7 +269,6 @@ export default function EvaluadorPage() {
     }
 
     setProcesando(key)
-
     const updateData: any = { estado: 'aprobado', comentario: comentario || null }
     if (tieneVencimiento) {
       updateData.fecha_emision = parsearFecha(fechaEmision)
@@ -268,31 +283,21 @@ export default function EvaluadorPage() {
       proveedor_id: seleccionado.id,
       titulo: 'Documento aprobado',
       mensaje: `Tu documento "${doc.nombre}" fue aprobado`,
-      tipo: 'info',
-      leida: false,
+      tipo: 'info', leida: false,
     })
 
     const docActualizado = { ...doc, ...updateData }
     if (tabla === 'documentos') setDocumentos(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
     else if (tabla === 'documentos_conductor') setDocsConductor(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
     else if (tabla === 'documentos_unidad') setDocsUnidad(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
-
     setProcesando(null)
   }, [seleccionado])
 
   const rechazarDoc = useCallback(async (tabla: string, doc: any, key: string, comentario: string) => {
     if (!comentario) { alert('El comentario es obligatorio para rechazar'); return }
-
     setProcesando(key)
 
-    const updateData = {
-      estado: 'rechazado',
-      comentario,
-      fecha_emision: null,
-      fecha_vencimiento: null,
-      fechas_bloqueadas: false,
-    }
-
+    const updateData = { estado: 'rechazado', comentario, fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false }
     const { error } = await supabase.from(tabla).update(updateData).eq('id', doc.id)
     if (error) { alert('Error: ' + error.message); setProcesando(null); return }
 
@@ -300,15 +305,13 @@ export default function EvaluadorPage() {
       proveedor_id: seleccionado.id,
       titulo: 'Documento rechazado',
       mensaje: `Tu documento "${doc.nombre}" fue rechazado: ${comentario}`,
-      tipo: 'peligro',
-      leida: false,
+      tipo: 'peligro', leida: false,
     })
 
     const docActualizado = { ...doc, ...updateData }
     if (tabla === 'documentos') setDocumentos(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
     else if (tabla === 'documentos_conductor') setDocsConductor(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
     else if (tabla === 'documentos_unidad') setDocsUnidad(prev => prev.map(d => d.id === doc.id ? docActualizado : d))
-
     setProcesando(null)
   }, [seleccionado])
 
@@ -319,144 +322,188 @@ export default function EvaluadorPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">Cargando...</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F7F7' }}>
+      <p style={{ color: '#888', fontSize: '14px' }}>Cargando...</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold text-gray-900">Panel del evaluador</h1>
-          <p className="text-xs text-gray-400">Revisión de proveedores</p>
+    <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
+          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
+          <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Panel del evaluador</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Notificaciones esEvaluador={true} />
           <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            className="text-sm text-gray-400 hover:text-red-500 transition">
+            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
             Salir
           </button>
         </div>
       </nav>
+      <div style={{ height: '3px', background: '#C41230' }} />
 
-      <div className="flex h-[calc(100vh-53px)]">
-        <div className="w-72 bg-white border-r border-gray-100 overflow-y-auto">
-          <div className="p-4 border-b border-gray-100">
-            <p className="text-xs font-medium text-gray-500">{proveedores.length} proveedores registrados</p>
+      <div style={{ display: 'flex', height: 'calc(100vh - 59px)' }}>
+
+        {/* Lista proveedores */}
+        <div style={{ width: '260px', minWidth: '260px', background: 'white', borderRight: '1px solid #EEEEEE', overflowY: 'auto' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #F0F0F0' }}>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: '#888', margin: 0 }}>{proveedores.length} proveedores registrados</p>
           </div>
-          {proveedores.map((prov) => (
-            <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
-              className={`p-4 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition
-                ${seleccionado?.id === prov.id ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''}`}>
-              <p className="text-sm font-medium text-gray-900 truncate">{prov.razon_social}</p>
-              <p className="text-xs text-gray-400">RUC {prov.ruc}</p>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-1 inline-block ${estadoColor[prov.estado] || estadoColor.pendiente}`}>
-                {estadoTexto[prov.estado] || 'Pendiente'}
-              </span>
-            </div>
-          ))}
+          {proveedores.map((prov) => {
+            const badge = estadoBadge[prov.estado] || estadoBadge.pendiente
+            return (
+              <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
+                style={{
+                  padding: '12px 16px', borderBottom: '1px solid #F5F5F5',
+                  cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white',
+                  borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent',
+                  transition: 'all 0.15s'
+                }}>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 2px' }}>{prov.razon_social}</p>
+                <p style={{ fontSize: '10px', color: '#888', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
+                <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
+                  {estadoTexto[prov.estado] || 'Pendiente'}
+                </span>
+              </div>
+            )
+          })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Panel revisión */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: '#F7F7F7' }}>
           {!seleccionado ? (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-gray-400 text-sm">Selecciona un proveedor para revisar</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '14px', color: '#888', margin: 0 }}>Selecciona un proveedor para revisar</p>
+                <p style={{ fontSize: '12px', color: '#BBB', marginTop: '6px' }}>Haz clic en cualquier proveedor de la lista</p>
+              </div>
             </div>
           ) : (
-            <div className="max-w-2xl">
-              <div className="bg-white rounded-xl border border-gray-100 p-5 mb-5">
-                <div className="flex items-center justify-between mb-3">
+            <div style={{ maxWidth: '700px' }}>
+
+              {/* Header proveedor */}
+              <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div>
-                    <h2 className="text-base font-semibold text-gray-900">{seleccionado.razon_social}</h2>
-                    <p className="text-xs text-gray-400">RUC {seleccionado.ruc}</p>
+                    <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#1a1a1a', margin: '0 0 2px' }}>{seleccionado.razon_social}</h2>
+                    <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>RUC {seleccionado.ruc}</p>
                   </div>
-                  <span className={`text-xs font-medium px-3 py-1 rounded-full ${estadoColor[seleccionado.estado] || estadoColor.pendiente}`}>
+                  <span style={{
+                    fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
+                    background: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).bg,
+                    color: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).color
+                  }}>
                     {estadoTexto[seleccionado.estado] || 'Pendiente'}
                   </span>
                 </div>
-                <div className="flex gap-2 flex-wrap">
+
+                {/* Tipo y almacenes */}
+                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', background: '#F9F9F9', borderRadius: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '10px', color: '#888', display: 'block' }}>Tipo de proveedor</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a' }}>{tipoProveedor}</span>
+                  </div>
+                  {almacenes.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '4px' }}>Almacenes con acceso</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {almacenes.map((a: any) => (
+                          <span key={a.nombre} style={{
+                            fontSize: '11px', background: '#F0FDF4', color: '#15803D',
+                            padding: '2px 8px', borderRadius: '20px', border: '1px solid #BBF7D0'
+                          }}>
+                            {a.nombre}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button onClick={() => actualizarEstadoProveedor('homologado')}
-                    className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                    style={{ background: '#C41230', color: 'white', fontSize: '11px', fontWeight: 600, padding: '7px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer' }}>
                     Homologar proveedor
                   </button>
                   <button onClick={() => actualizarEstadoProveedor('rechazado')}
-                    className="bg-red-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-red-600 transition">
+                    style={{ background: '#FEF2F2', color: '#C41230', fontSize: '11px', fontWeight: 600, padding: '7px 14px', borderRadius: '7px', border: '1px solid #FECACA', cursor: 'pointer' }}>
                     Rechazar proveedor
                   </button>
                   <button onClick={() => actualizarEstadoProveedor('pendiente')}
-                    className="border border-gray-200 text-gray-600 text-xs px-4 py-2 rounded-lg hover:bg-gray-50 transition">
+                    style={{ background: 'white', color: '#666', fontSize: '11px', padding: '7px 14px', borderRadius: '7px', border: '1px solid #E8E8E8', cursor: 'pointer' }}>
                     Marcar pendiente
                   </button>
                 </div>
               </div>
 
+              {/* Documentos empresa */}
               {documentos.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Documentos de la empresa</h3>
+                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Documentos de la empresa</h3>
                   {documentos.map(doc => {
-                    const tieneVencimiento = ['Seguro de carga', 'Permiso de circulacion MTC'].includes(doc.nombre)
+                    const tieneVencimiento = ['Poliza de seguros contra terceros'].includes(doc.nombre)
                     return (
                       <FilaDoc key={doc.id} doc={doc} tabla="documentos"
                         tieneVencimiento={tieneVencimiento}
                         keyPrefix={`empresa-${doc.proveedor_id}`}
                         procesando={procesando}
-                        onAprobar={aprobarDoc}
-                        onRechazar={rechazarDoc}
-                        onVerDoc={verDocumento} />
+                        onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
                     )
                   })}
                 </div>
               )}
 
+              {/* Conductores */}
               {conductores.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Conductores</h3>
+                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Conductores</h3>
                   {conductores.map(conductor => (
-                    <div key={conductor.id} className="mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-6 h-6 bg-blue-50 rounded-full flex items-center justify-center">
-                          <span className="text-xs font-medium text-blue-600">{conductor.nombre_completo.charAt(0)}</span>
+                    <div key={conductor.id} style={{ marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#C41230', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>
+                          {conductor.nombre_completo.charAt(0)}
                         </div>
-                        <span className="text-sm font-medium text-gray-800">{conductor.nombre_completo}</span>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a' }}>{conductor.nombre_completo}</span>
                       </div>
                       {docsConductor.filter(d => d.conductor_id === conductor.id).map(doc => (
                         <FilaDoc key={doc.id} doc={doc} tabla="documentos_conductor"
                           tieneVencimiento={true}
                           keyPrefix={`conductor-${conductor.id}`}
                           procesando={procesando}
-                          onAprobar={aprobarDoc}
-                          onRechazar={rechazarDoc}
-                          onVerDoc={verDocumento} />
+                          onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
                       ))}
                       {docsConductor.filter(d => d.conductor_id === conductor.id).length === 0 && (
-                        <p className="text-xs text-gray-400 ml-8">Sin documentos cargados aún</p>
+                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aún</p>
                       )}
                     </div>
                   ))}
                 </div>
               )}
 
+              {/* Unidades */}
               {unidades.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Unidades vehiculares</h3>
+                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Unidades vehiculares</h3>
                   {unidades.map(unidad => (
-                    <div key={unidad.id} className="mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm">🚛</span>
-                        <span className="text-sm font-medium text-gray-800">Placa: {unidad.placa}</span>
+                    <div key={unidad.id} style={{ marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#4A4A4A', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>
+                          🚛
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a' }}>Placa: {unidad.placa}</span>
                       </div>
                       {docsUnidad.filter(d => d.unidad_id === unidad.id).map(doc => (
                         <FilaDoc key={doc.id} doc={doc} tabla="documentos_unidad"
-                          tieneVencimiento={['SOAT'].includes(doc.nombre)}
+                          tieneVencimiento={['SOAT', 'Revision tecnica', 'Certificado habilitacion vehicular MTC'].includes(doc.nombre)}
                           keyPrefix={`unidad-${unidad.id}`}
                           procesando={procesando}
-                          onAprobar={aprobarDoc}
-                          onRechazar={rechazarDoc}
-                          onVerDoc={verDocumento} />
+                          onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
                       ))}
                       {docsUnidad.filter(d => d.unidad_id === unidad.id).length === 0 && (
-                        <p className="text-xs text-gray-400 ml-8">Sin documentos cargados aún</p>
+                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aún</p>
                       )}
                     </div>
                   ))}
@@ -464,10 +511,11 @@ export default function EvaluadorPage() {
               )}
 
               {documentos.length === 0 && conductores.length === 0 && unidades.length === 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-                  <p className="text-gray-400 text-sm">Este proveedor aún no ha cargado documentos</p>
+                <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '40px', textAlign: 'center' }}>
+                  <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Este proveedor aún no ha cargado documentos</p>
                 </div>
               )}
+
             </div>
           )}
         </div>
