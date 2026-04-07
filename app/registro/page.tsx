@@ -54,7 +54,6 @@ export default function RegistroPage() {
           user_id: data.user.id,
           razon_social: form.razon_social,
           ruc: form.ruc,
-          tipo_id: null,
           estado: 'pendiente',
         })
 
@@ -64,118 +63,110 @@ export default function RegistroPage() {
         return
       }
 
+      await supabase.from('perfiles').insert({
+        id: data.user.id,
+        rol: 'proveedor',
+      })
+
       router.push('/dashboard')
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-10">
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 w-full max-w-md">
+    <div style={{ minHeight: '100vh', background: '#F7F7F7', display: 'flex', flexDirection: 'column', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+      <div style={{ height: '5px', background: '#C41230' }} />
 
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Registro de proveedor</h1>
-          <p className="text-gray-500 text-sm mt-1">Completa tus datos para iniciar el proceso de homologación</p>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
+        <div style={{ width: '100%', maxWidth: '460px' }}>
+
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '44px', marginBottom: '16px' }} />
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1a1a1a', marginBottom: '6px' }}>
+              Registro de proveedor
+            </h1>
+            <p style={{ fontSize: '13px', color: '#888' }}>
+              Completa tus datos para iniciar el proceso de homologación
+            </p>
+          </div>
+
+          <div style={{ background: 'white', borderRadius: '12px', padding: '32px', boxShadow: '0 2px 16px rgba(0,0,0,0.06)', border: '1px solid #EEEEEE' }}>
+
+            <form onSubmit={handleRegistro}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '6px' }}>
+                  Razón social <span style={{ color: '#C41230' }}>*</span>
+                </label>
+                <input type="text" name="razon_social" value={form.razon_social}
+                  onChange={handleChange} placeholder="Empresa S.A.C." required
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '6px' }}>
+                  RUC <span style={{ color: '#C41230' }}>*</span>
+                </label>
+                <input type="text" name="ruc" value={form.ruc}
+                  onChange={handleChange} placeholder="20XXXXXXXXX" maxLength={11} required
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '6px' }}>
+                  Correo electrónico <span style={{ color: '#C41230' }}>*</span>
+                </label>
+                <input type="email" name="email" value={form.email}
+                  onChange={handleChange} placeholder="contacto@empresa.com" required
+                  style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '6px' }}>
+                    Contraseña <span style={{ color: '#C41230' }}>*</span>
+                  </label>
+                  <input type="password" name="password" value={form.password}
+                    onChange={handleChange} placeholder="Mínimo 6 caracteres" required
+                    style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '6px' }}>
+                    Confirmar contraseña <span style={{ color: '#C41230' }}>*</span>
+                  </label>
+                  <input type="password" name="confirmar_password" value={form.confirmar_password}
+                    onChange={handleChange} placeholder="Repite tu contraseña" required
+                    style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+
+              {error && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
+                  <p style={{ color: '#C41230', fontSize: '13px', margin: 0 }}>{error}</p>
+                </div>
+              )}
+
+              <button type="submit" disabled={loading}
+                style={{ width: '100%', padding: '12px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}>
+                {loading ? 'Registrando...' : 'Crear cuenta'}
+              </button>
+            </form>
+
+            <div style={{ marginTop: '20px', textAlign: 'center' }}>
+              <p style={{ fontSize: '13px', color: '#888' }}>
+                ¿Ya tienes cuenta?{' '}
+                <a href="/login" style={{ color: '#C41230', fontWeight: 600, textDecoration: 'none' }}>
+                  Inicia sesión
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: '24px' }}>
+            <p style={{ fontSize: '11px', color: '#BBB' }}>
+              © 2026 Omni Logistics · Plataforma de Homologación de Proveedores
+            </p>
+          </div>
+
         </div>
-
-        <form onSubmit={handleRegistro} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Razón social
-            </label>
-            <input
-              type="text"
-              name="razon_social"
-              value={form.razon_social}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Empresa SAC"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              RUC
-            </label>
-            <input
-              type="text"
-              name="ruc"
-              value={form.ruc}
-              onChange={handleChange}
-              maxLength={11}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="20XXXXXXXXX"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Correo electrónico
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="contacto@empresa.com"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              name="password"
-              value={form.password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Mínimo 6 caracteres"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confirmar contraseña
-            </label>
-            <input
-              type="password"
-              name="confirmar_password"
-              value={form.confirmar_password}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Repite tu contraseña"
-              required
-            />
-          </div>
-
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            {loading ? 'Registrando...' : 'Crear cuenta'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500">
-            ¿Ya tienes cuenta?{' '}
-            <a href="/login" className="text-blue-600 hover:underline font-medium">
-              Inicia sesión
-            </a>
-          </p>
-        </div>
-
       </div>
     </div>
   )
