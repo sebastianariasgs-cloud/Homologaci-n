@@ -11,7 +11,7 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
   useEffect(() => {
     if (proveedorId || esEvaluador) {
       cargarNotificaciones()
-      verificarVencimientos()
+      if (proveedorId) verificarVencimientos()
     }
   }, [proveedorId])
 
@@ -35,15 +35,15 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
     if (!proveedorId) return
 
     const hoy = new Date()
+    const hoyInicio = new Date()
+    hoyInicio.setHours(0, 0, 0, 0)
 
-    // Verificar documentos de empresa
     const { data: docs } = await supabase
       .from('documentos')
       .select('*')
       .eq('proveedor_id', proveedorId)
       .not('fecha_vencimiento', 'is', null)
 
-    // Verificar documentos de conductores
     const { data: conductores } = await supabase
       .from('conductores')
       .select('id')
@@ -60,7 +60,6 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
       docsConductor = dc || []
     }
 
-    // Verificar documentos de unidades
     const { data: unidades } = await supabase
       .from('unidades')
       .select('id')
@@ -106,7 +105,7 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
       }
 
       if (tipo) {
-        // Verificar si ya existe notificación para este doc
+        // Verificar si ya existe notificación no leída del mismo mensaje
         const { data: existente } = await supabase
           .from('notificaciones')
           .select('id')
@@ -115,13 +114,23 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
           .eq('leida', false)
 
         if (!existente || existente.length === 0) {
-          await supabase.from('notificaciones').insert({
-            proveedor_id: proveedorId,
-            titulo,
-            mensaje,
-            tipo,
-            leida: false,
-          })
+          // Verificar si ya se creó una notificación hoy por este mismo documento
+          const { data: yaHoy } = await supabase
+            .from('notificaciones')
+            .select('id')
+            .eq('proveedor_id', proveedorId)
+            .eq('mensaje', mensaje)
+            .gte('created_at', hoyInicio.toISOString())
+
+          if (!yaHoy || yaHoy.length === 0) {
+            await supabase.from('notificaciones').insert({
+              proveedor_id: proveedorId,
+              titulo,
+              mensaje,
+              tipo,
+              leida: false,
+            })
+          }
         }
       }
     }
@@ -144,13 +153,6 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
 
   const noLeidas = notificaciones.filter(n => !n.leida).length
 
-  const tipoEstilo: { [key: string]: string } = {
-    critico: 'bg-red-50 border-red-200 text-red-800',
-    peligro: 'bg-orange-50 border-orange-200 text-orange-800',
-    advertencia: 'bg-amber-50 border-amber-200 text-amber-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800',
-  }
-
   const tipoIcono: { [key: string]: string } = {
     critico: '🔴',
     peligro: '🟠',
@@ -158,62 +160,102 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
     info: '🔵',
   }
 
+  const tipoEstilo: { [key: string]: { bg: string, border: string, color: string } } = {
+    critico: { bg: '#FEF2F2', border: '#FECACA', color: '#C41230' },
+    peligro: { bg: '#FFF7ED', border: '#FED7AA', color: '#C2410C' },
+    advertencia: { bg: '#FFFBEB', border: '#FDE68A', color: '#92400E' },
+    info: { bg: '#EFF6FF', border: '#BFDBFE', color: '#1D4ED8' },
+  }
+
   return (
-    <div className="relative">
-      {/* Botón campana */}
+    <div style={{ position: 'relative' }}>
       <button
         onClick={() => setAbierto(!abierto)}
-        className="relative w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-50 transition"
-      >
-        <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        style={{
+          width: '34px', height: '34px', borderRadius: '8px',
+          border: '1px solid #E8E8E8', background: 'white',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', position: 'relative'
+        }}>
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <path d="M7.5 1.5a4 4 0 014 4v2.5l1 1.5h-10l1-1.5V5.5a4 4 0 014-4z" stroke="#666" strokeWidth="1.2"/>
+          <path d="M6 12a1.5 1.5 0 003 0" stroke="#666" strokeWidth="1.2"/>
         </svg>
         {noLeidas > 0 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {noLeidas}
+          <span style={{
+            position: 'absolute', top: '-4px', right: '-4px',
+            width: '16px', height: '16px', background: '#C41230',
+            color: 'white', fontSize: '9px', fontWeight: 700,
+            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            {noLeidas > 9 ? '9+' : noLeidas}
           </span>
         )}
       </button>
 
-      {/* Panel de notificaciones */}
       {abierto && (
-        <div className="absolute right-0 top-10 w-80 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Notificaciones</h3>
+        <div style={{
+          position: 'absolute', right: 0, top: '42px', width: '320px',
+          background: 'white', border: '1px solid #EEEEEE', borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.1)', zIndex: 100, overflow: 'hidden'
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 16px', borderBottom: '1px solid #F0F0F0'
+          }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>
+              Notificaciones {noLeidas > 0 && <span style={{ color: '#C41230' }}>({noLeidas})</span>}
+            </span>
             {noLeidas > 0 && (
               <button onClick={marcarTodasLeidas}
-                className="text-xs text-blue-600 hover:underline">
+                style={{ fontSize: '11px', color: '#C41230', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
                 Marcar todas como leídas
               </button>
             )}
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
             {loading && (
-              <p className="text-xs text-gray-400 text-center py-6">Cargando...</p>
+              <p style={{ fontSize: '12px', color: '#888', textAlign: 'center', padding: '20px' }}>Cargando...</p>
             )}
             {!loading && notificaciones.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-6">Sin notificaciones</p>
-            )}
-            {notificaciones.map(n => (
-              <div key={n.id}
-                className={`p-3 border-b border-gray-50 cursor-pointer transition hover:opacity-80 ${!n.leida ? 'bg-gray-50' : ''}`}
-                onClick={() => marcarLeida(n.id)}>
-                <div className="flex items-start gap-2">
-                  <span className="text-sm">{tipoIcono[n.tipo] || '🔵'}</span>
-                  <div className="flex-1">
-                    <p className="text-xs font-medium text-gray-900">{n.titulo}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{n.mensaje}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(n.created_at).toLocaleDateString('es-PE')}
-                    </p>
-                  </div>
-                  {!n.leida && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-1 flex-shrink-0"></div>
-                  )}
-                </div>
+              <div style={{ textAlign: 'center', padding: '28px 16px' }}>
+                <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Sin notificaciones</p>
+                <p style={{ fontSize: '11px', color: '#BBB', marginTop: '4px' }}>Todo está al día ✓</p>
               </div>
-            ))}
+            )}
+            {notificaciones.map(n => {
+              const estilo = tipoEstilo[n.tipo] || tipoEstilo.info
+              return (
+                <div key={n.id}
+                  onClick={() => marcarLeida(n.id)}
+                  style={{
+                    padding: '10px 16px', borderBottom: '1px solid #F5F5F5',
+                    cursor: 'pointer', background: n.leida ? 'white' : '#FAFAFA',
+                    transition: 'background 0.15s'
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{
+                      width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                      background: estilo.bg, border: `1px solid ${estilo.border}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px'
+                    }}>
+                      {tipoIcono[n.tipo] || '🔵'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{n.titulo}</p>
+                      <p style={{ fontSize: '11px', color: '#666', marginTop: '2px', lineHeight: 1.4 }}>{n.mensaje}</p>
+                      <p style={{ fontSize: '10px', color: '#AAA', marginTop: '3px' }}>
+                        {new Date(n.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    {!n.leida && (
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#C41230', flexShrink: 0, marginTop: '6px' }} />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

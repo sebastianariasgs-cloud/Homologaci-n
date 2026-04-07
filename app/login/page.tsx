@@ -16,10 +16,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
     if (authError) {
       setError('Correo o contraseña incorrectos')
@@ -29,79 +26,130 @@ export default function LoginPage() {
 
     if (data.user) {
       const { data: perfil } = await supabase
-        .from('perfiles')
-        .select('rol')
-        .eq('id', data.user.id)
-        .single()
-
-      if (perfil?.rol === 'evaluador') {
-        router.push('/evaluador')
-      } else {
-        router.push('/dashboard')
-      }
+        .from('perfiles').select('rol').eq('id', data.user.id).single()
+      router.push(perfil?.rol === 'evaluador' ? '/evaluador' : '/dashboard')
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 w-full max-w-md">
+    <div style={{
+      minHeight: '100vh',
+      background: '#F7F7F7',
+      display: 'flex',
+      flexDirection: 'column',
+      fontFamily: "'Segoe UI', Roboto, sans-serif"
+    }}>
 
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Bienvenido</h1>
-          <p className="text-gray-500 text-sm mt-1">Plataforma de homologación de proveedores</p>
-        </div>
+      {/* Barra superior roja */}
+      <div style={{ height: '5px', background: '#C41230', width: '100%' }} />
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Correo electrónico
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="tucorreo@empresa.com"
-              required
-            />
+      {/* Contenido centrado */}
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', padding: '40px 20px'
+      }}>
+        <div style={{ width: '100%', maxWidth: '440px' }}>
+
+          {/* Logo y título */}
+          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+            <img src="/LogoOmni.png" alt="Omni Logistics"
+              style={{ height: '48px', marginBottom: '20px' }} />
+            <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1a1a1a', marginBottom: '6px' }}>
+              Plataforma de Homologación
+            </h1>
+            <p style={{ fontSize: '13px', color: '#888' }}>
+              Ingresa tus credenciales para acceder
+            </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="••••••••"
-              required
-            />
+          {/* Card del formulario */}
+          <div style={{
+            background: 'white', borderRadius: '12px',
+            padding: '36px', boxShadow: '0 2px 16px rgba(0,0,0,0.08)',
+            border: '1px solid #EEEEEE'
+          }}>
+            <form onSubmit={handleLogin}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block', fontSize: '13px',
+                  fontWeight: 500, color: '#444', marginBottom: '7px'
+                }}>
+                  Correo electrónico
+                </label>
+                <input type="email" value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tucorreo@omnilogistics.com"
+                  required
+                  style={{
+                    width: '100%', padding: '11px 14px',
+                    border: '1.5px solid #E8E8E8', borderRadius: '8px',
+                    fontSize: '14px', outline: 'none', color: '#1a1a1a',
+                    background: 'white', boxSizing: 'border-box',
+                    transition: 'border-color 0.2s'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '28px' }}>
+                <label style={{
+                  display: 'block', fontSize: '13px',
+                  fontWeight: 500, color: '#444', marginBottom: '7px'
+                }}>
+                  Contraseña
+                </label>
+                <input type="password" value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: '100%', padding: '11px 14px',
+                    border: '1.5px solid #E8E8E8', borderRadius: '8px',
+                    fontSize: '14px', outline: 'none', color: '#1a1a1a',
+                    background: 'white', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {error && (
+                <div style={{
+                  background: '#FEF2F2', border: '1px solid #FECACA',
+                  borderRadius: '8px', padding: '10px 14px', marginBottom: '20px'
+                }}>
+                  <p style={{ color: '#C41230', fontSize: '13px', margin: 0 }}>{error}</p>
+                </div>
+              )}
+
+              <button type="submit" disabled={loading}
+                style={{
+                  width: '100%', padding: '13px',
+                  background: '#C41230', color: 'white',
+                  border: 'none', borderRadius: '8px', fontSize: '14px',
+                  fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.8 : 1, letterSpacing: '0.3px'
+                }}>
+                {loading ? 'Ingresando...' : 'Ingresar'}
+              </button>
+            </form>
+
+            <div style={{ marginTop: '20px', textAlign: 'center' }}>
+              <p style={{ fontSize: '13px', color: '#888' }}>
+                ¿Eres proveedor nuevo?{' '}
+                <a href="/registro"
+                  style={{ color: '#C41230', fontWeight: 600, textDecoration: 'none' }}>
+                  Regístrate aquí
+                </a>
+              </p>
+            </div>
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
-          )}
+          {/* Footer */}
+          <div style={{ textAlign: 'center', marginTop: '28px' }}>
+            <p style={{ fontSize: '11px', color: '#BBB' }}>
+              © 2026 Omni Logistics · Plataforma de Homologación de Proveedores
+            </p>
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            {loading ? 'Ingresando...' : 'Ingresar'}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500">
-            ¿Eres proveedor y no tienes cuenta?{' '}
-            <a href="/registro" className="text-blue-600 hover:underline font-medium">
-              Regístrate aquí
-            </a>
-          </p>
         </div>
-
       </div>
     </div>
   )

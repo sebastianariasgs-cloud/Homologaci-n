@@ -1,26 +1,32 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --omni-red: #C41230;
+  --omni-red-dark: #9E0E26;
+  --omni-red-light: #F9E5E8;
+  --omni-gray: #4A4A4A;
+  --omni-gray-light: #F5F5F5;
+  --omni-border: #E5E5E5;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--omni-gray);
+  background: #F8F8F8;
+}
+
+.btn-primary {
+  background: var(--omni-red);
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover {
+  background: var(--omni-red-dark);
 }
