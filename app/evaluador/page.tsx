@@ -33,13 +33,6 @@ const parsearFecha = (valor: string) => {
   return construirFecha(partes[0], partes[1], partes[2])
 }
 
-const estadoColor: { [key: string]: string } = {
-  pendiente: 'bg-amber-50 text-amber-700',
-  aprobado: 'bg-green-50 text-green-700',
-  rechazado: 'bg-red-50 text-red-700',
-  homologado: 'bg-blue-50 text-blue-700',
-}
-
 const estadoBadge: { [key: string]: { bg: string, color: string } } = {
   pendiente: { bg: '#FFF7ED', color: '#C2410C' },
   aprobado: { bg: '#F0FDF4', color: '#15803D' },
@@ -84,7 +77,8 @@ function CampoFecha({ docKey, tipo, onUpdate }: {
       <input type="text" placeholder="DD/MM/AAAA" value={inputVal}
         maxLength={10} onChange={handleChange}
         style={{
-          width: '110px', fontSize: '11px', border: `1px solid ${error ? '#FECACA' : '#E8E8E8'}`,
+          width: '110px', fontSize: '11px',
+          border: `1px solid ${error ? '#FECACA' : '#E8E8E8'}`,
           borderRadius: '6px', padding: '4px 8px', outline: 'none'
         }} />
       {error && <span style={{ fontSize: '10px', color: '#C41230' }}>{error}</span>}
@@ -297,7 +291,10 @@ export default function EvaluadorPage() {
     if (!comentario) { alert('El comentario es obligatorio para rechazar'); return }
     setProcesando(key)
 
-    const updateData = { estado: 'rechazado', comentario, fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false }
+    const updateData = {
+      estado: 'rechazado', comentario,
+      fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false
+    }
     const { error } = await supabase.from(tabla).update(updateData).eq('id', doc.id)
     if (error) { alert('Error: ' + error.message); setProcesando(null); return }
 
@@ -316,9 +313,13 @@ export default function EvaluadorPage() {
   }, [seleccionado])
 
   const actualizarEstadoProveedor = async (estado: string) => {
-    await supabase.from('proveedores').update({ estado }).eq('id', seleccionado.id)
+    const updateData: any = { estado }
+    if (estado === 'homologado') {
+      updateData.fecha_homologacion = new Date().toISOString()
+    }
+    await supabase.from('proveedores').update(updateData).eq('id', seleccionado.id)
     await cargarProveedores()
-    setSeleccionado({ ...seleccionado, estado })
+    setSeleccionado({ ...seleccionado, ...updateData })
   }
 
   if (loading) return (
@@ -335,7 +336,11 @@ export default function EvaluadorPage() {
           <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
           <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Panel del evaluador</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <a href="/evaluador/reportes"
+            style={{ fontSize: '12px', color: '#C41230', fontWeight: 600, textDecoration: 'none', background: '#FEF2F2', padding: '6px 14px', borderRadius: '7px', border: '1px solid #FECACA' }}>
+            📊 Reportes
+          </a>
           <Notificaciones esEvaluador={true} />
           <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
             style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -360,7 +365,6 @@ export default function EvaluadorPage() {
                   padding: '12px 16px', borderBottom: '1px solid #F5F5F5',
                   cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white',
                   borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent',
-                  transition: 'all 0.15s'
                 }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 2px' }}>{prov.razon_social}</p>
                 <p style={{ fontSize: '10px', color: '#888', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
@@ -400,7 +404,6 @@ export default function EvaluadorPage() {
                   </span>
                 </div>
 
-                {/* Tipo y almacenes */}
                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '14px', padding: '10px 14px', background: '#F9F9F9', borderRadius: '8px' }}>
                   <div>
                     <span style={{ fontSize: '10px', color: '#888', display: 'block' }}>Tipo de proveedor</span>
@@ -411,10 +414,7 @@ export default function EvaluadorPage() {
                       <span style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '4px' }}>Almacenes con acceso</span>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         {almacenes.map((a: any) => (
-                          <span key={a.nombre} style={{
-                            fontSize: '11px', background: '#F0FDF4', color: '#15803D',
-                            padding: '2px 8px', borderRadius: '20px', border: '1px solid #BBF7D0'
-                          }}>
+                          <span key={a.nombre} style={{ fontSize: '11px', background: '#F0FDF4', color: '#15803D', padding: '2px 8px', borderRadius: '20px', border: '1px solid #BBF7D0' }}>
                             {a.nombre}
                           </span>
                         ))}
@@ -439,7 +439,7 @@ export default function EvaluadorPage() {
                 </div>
               </div>
 
-              {/* Documentos empresa */}
+              {/* Docs empresa */}
               {documentos.length > 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Documentos de la empresa</h3>
