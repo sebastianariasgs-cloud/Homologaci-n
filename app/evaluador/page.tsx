@@ -5,13 +5,6 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Notificaciones from '../components/Notificaciones'
 
-const construirFecha = (dia: string, mes: string, anio: string) => {
-  if (dia && mes && anio && anio.length === 4) {
-    return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
-  }
-  return ''
-}
-
 const validarFecha = (valor: string) => {
   if (!valor || valor.length < 10) return false
   const partes = valor.split('/')
@@ -30,7 +23,7 @@ const validarFecha = (valor: string) => {
 const parsearFecha = (valor: string) => {
   if (!validarFecha(valor)) return null
   const partes = valor.split('/')
-  return construirFecha(partes[0], partes[1], partes[2])
+  return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`
 }
 
 const estadoBadge: { [key: string]: { bg: string, color: string } } = {
@@ -67,7 +60,7 @@ function CampoFecha({ docKey, tipo, onUpdate }: {
       if (validarFecha(formatted)) {
         onUpdate(docKey, tipo, formatted)
       } else {
-        setError('Fecha inválida')
+        setError('Fecha invalida')
       }
     }
   }
@@ -76,11 +69,7 @@ function CampoFecha({ docKey, tipo, onUpdate }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <input type="text" placeholder="DD/MM/AAAA" value={inputVal}
         maxLength={10} onChange={handleChange}
-        style={{
-          width: '110px', fontSize: '11px',
-          border: `1px solid ${error ? '#FECACA' : '#E8E8E8'}`,
-          borderRadius: '6px', padding: '4px 8px', outline: 'none'
-        }} />
+        style={{ width: '110px', fontSize: '11px', border: `1px solid ${error ? '#FECACA' : '#E8E8E8'}`, borderRadius: '6px', padding: '4px 8px', outline: 'none' }} />
       {error && <span style={{ fontSize: '10px', color: '#C41230' }}>{error}</span>}
     </div>
   )
@@ -107,7 +96,7 @@ function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAproba
           <span style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a' }}>{doc.nombre}</span>
           {doc.fecha_emision && (
             <span style={{ fontSize: '10px', color: '#888', marginLeft: '8px' }}>
-              Emisión: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
+              Emision: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
             </span>
           )}
           {doc.fecha_vencimiento && (
@@ -117,14 +106,14 @@ function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAproba
           )}
         </div>
         <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
-          {estadoTexto[doc.estado] || 'En revisión'}
+          {estadoTexto[doc.estado] || 'En revision'}
         </span>
       </div>
 
       {tieneVencimiento && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '10px', color: '#888' }}>Emisión:</span>
+            <span style={{ fontSize: '10px', color: '#888' }}>Emision:</span>
             <CampoFecha docKey={key} tipo="emision" onUpdate={handleFechaUpdate} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -142,8 +131,7 @@ function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAproba
           </button>
         )}
         <input type="text" placeholder="Comentario (obligatorio para rechazar)"
-          value={comentario}
-          onChange={(e) => setComentario(e.target.value)}
+          value={comentario} onChange={(e) => setComentario(e.target.value)}
           style={{ flex: 1, minWidth: '160px', fontSize: '11px', border: '1px solid #E8E8E8', borderRadius: '6px', padding: '5px 10px', outline: 'none' }} />
         <button disabled={esProcesando || !doc.url}
           onClick={() => onAprobar(tabla, doc, key, tieneVencimiento, fechaEmision, fechaVencimiento, comentario)}
@@ -230,7 +218,16 @@ export default function EvaluadorPage() {
       .from('almacenes_proveedor').select('nombre').eq('proveedor_id', prov.id)
     setAlmacenes(alms || [])
 
-    if (prov.tipo_id) {
+    // Obtener tipos del proveedor
+    const { data: tiposProv } = await supabase
+      .from('proveedor_tipos')
+      .select('tipos_proveedor(nombre)')
+      .eq('proveedor_id', prov.id)
+
+    if (tiposProv && tiposProv.length > 0) {
+      const nombres = tiposProv.map((t: any) => t.tipos_proveedor?.nombre).filter(Boolean)
+      setTipoProveedor(nombres.join(', '))
+    } else if (prov.tipo_id) {
       const { data: tipo } = await supabase
         .from('tipos_proveedor').select('nombre').eq('id', prov.tipo_id).single()
       setTipoProveedor(tipo?.nombre || 'No especificado')
@@ -251,13 +248,13 @@ export default function EvaluadorPage() {
   ) => {
     if (tieneVencimiento) {
       if (!validarFecha(fechaEmision) || !validarFecha(fechaVencimiento)) {
-        alert('Ingresa fechas válidas (DD/MM/AAAA) antes de aprobar')
+        alert('Ingresa fechas validas (DD/MM/AAAA) antes de aprobar')
         return
       }
       const emision = parsearFecha(fechaEmision)
       const vencimiento = parsearFecha(fechaVencimiento)
       if (emision && vencimiento && emision >= vencimiento) {
-        alert('La fecha de vencimiento debe ser posterior a la de emisión')
+        alert('La fecha de vencimiento debe ser posterior a la de emision')
         return
       }
     }
@@ -291,10 +288,7 @@ export default function EvaluadorPage() {
     if (!comentario) { alert('El comentario es obligatorio para rechazar'); return }
     setProcesando(key)
 
-    const updateData = {
-      estado: 'rechazado', comentario,
-      fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false
-    }
+    const updateData = { estado: 'rechazado', comentario, fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false }
     const { error } = await supabase.from(tabla).update(updateData).eq('id', doc.id)
     if (error) { alert('Error: ' + error.message); setProcesando(null); return }
 
@@ -337,9 +331,13 @@ export default function EvaluadorPage() {
           <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Panel del evaluador</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <a href="/evaluador/dashboard"
+            style={{ fontSize: '12px', color: '#666', fontWeight: 600, textDecoration: 'none', background: '#F5F5F5', padding: '6px 14px', borderRadius: '7px', border: '1px solid #E8E8E8' }}>
+            Dashboard
+          </a>
           <a href="/evaluador/reportes"
             style={{ fontSize: '12px', color: '#C41230', fontWeight: 600, textDecoration: 'none', background: '#FEF2F2', padding: '6px 14px', borderRadius: '7px', border: '1px solid #FECACA' }}>
-            📊 Reportes
+            Reportes
           </a>
           <Notificaciones esEvaluador={true} />
           <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
@@ -352,7 +350,6 @@ export default function EvaluadorPage() {
 
       <div style={{ display: 'flex', height: 'calc(100vh - 59px)' }}>
 
-        {/* Lista proveedores */}
         <div style={{ width: '260px', minWidth: '260px', background: 'white', borderRight: '1px solid #EEEEEE', overflowY: 'auto' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid #F0F0F0' }}>
             <p style={{ fontSize: '11px', fontWeight: 600, color: '#888', margin: 0 }}>{proveedores.length} proveedores registrados</p>
@@ -361,11 +358,7 @@ export default function EvaluadorPage() {
             const badge = estadoBadge[prov.estado] || estadoBadge.pendiente
             return (
               <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
-                style={{
-                  padding: '12px 16px', borderBottom: '1px solid #F5F5F5',
-                  cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white',
-                  borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent',
-                }}>
+                style={{ padding: '12px 16px', borderBottom: '1px solid #F5F5F5', cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white', borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent' }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 2px' }}>{prov.razon_social}</p>
                 <p style={{ fontSize: '10px', color: '#888', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
                 <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
@@ -376,7 +369,6 @@ export default function EvaluadorPage() {
           })}
         </div>
 
-        {/* Panel revisión */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: '#F7F7F7' }}>
           {!seleccionado ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -388,18 +380,13 @@ export default function EvaluadorPage() {
           ) : (
             <div style={{ maxWidth: '700px' }}>
 
-              {/* Header proveedor */}
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div>
                     <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#1a1a1a', margin: '0 0 2px' }}>{seleccionado.razon_social}</h2>
                     <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>RUC {seleccionado.ruc}</p>
                   </div>
-                  <span style={{
-                    fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px',
-                    background: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).bg,
-                    color: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).color
-                  }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px', background: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).bg, color: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).color }}>
                     {estadoTexto[seleccionado.estado] || 'Pendiente'}
                   </span>
                 </div>
@@ -439,7 +426,6 @@ export default function EvaluadorPage() {
                 </div>
               </div>
 
-              {/* Docs empresa */}
               {documentos.length > 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Documentos de la empresa</h3>
@@ -456,7 +442,6 @@ export default function EvaluadorPage() {
                 </div>
               )}
 
-              {/* Conductores */}
               {conductores.length > 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Conductores</h3>
@@ -476,14 +461,13 @@ export default function EvaluadorPage() {
                           onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
                       ))}
                       {docsConductor.filter(d => d.conductor_id === conductor.id).length === 0 && (
-                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aún</p>
+                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aun</p>
                       )}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Unidades */}
               {unidades.length > 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Unidades vehiculares</h3>
@@ -503,7 +487,7 @@ export default function EvaluadorPage() {
                           onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
                       ))}
                       {docsUnidad.filter(d => d.unidad_id === unidad.id).length === 0 && (
-                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aún</p>
+                        <p style={{ fontSize: '11px', color: '#AAA', marginLeft: '34px' }}>Sin documentos cargados aun</p>
                       )}
                     </div>
                   ))}
@@ -512,7 +496,7 @@ export default function EvaluadorPage() {
 
               {documentos.length === 0 && conductores.length === 0 && unidades.length === 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '40px', textAlign: 'center' }}>
-                  <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Este proveedor aún no ha cargado documentos</p>
+                  <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Este proveedor aun no ha cargado documentos</p>
                 </div>
               )}
 
