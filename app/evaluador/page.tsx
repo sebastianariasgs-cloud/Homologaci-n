@@ -5,6 +5,14 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Notificaciones from '../components/Notificaciones'
 
+const DOCS_CON_VENCIMIENTO = [
+  'Poliza de seguros contra terceros',
+  'SOAT',
+  'Licencia de conducir',
+  'SCTR',
+  'Revision tecnica',
+]
+
 const validarFecha = (valor: string) => {
   if (!valor || valor.length < 10) return false
   const partes = valor.split('/')
@@ -164,6 +172,8 @@ export default function EvaluadorPage() {
   const [procesando, setProcesando] = useState<string | null>(null)
   const [almacenes, setAlmacenes] = useState<any[]>([])
   const [tipoProveedor, setTipoProveedor] = useState<string>('')
+  const [busqueda, setBusqueda] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('todos')
 
   useEffect(() => { verificarRol() }, [])
 
@@ -182,6 +192,14 @@ export default function EvaluadorPage() {
     setProveedores(data || [])
     setLoading(false)
   }
+
+  const proveedoresFiltrados = proveedores.filter(p => {
+    const matchBusqueda = busqueda === '' ||
+      p.razon_social.toLowerCase().includes(busqueda.toLowerCase()) ||
+      p.ruc.includes(busqueda)
+    const matchEstado = filtroEstado === 'todos' || p.estado === filtroEstado
+    return matchBusqueda && matchEstado
+  })
 
   const seleccionarProveedor = async (prov: any) => {
     setSeleccionado(prov)
@@ -218,7 +236,6 @@ export default function EvaluadorPage() {
       .from('almacenes_proveedor').select('nombre').eq('proveedor_id', prov.id)
     setAlmacenes(alms || [])
 
-    // Obtener tipos del proveedor
     const { data: tiposProv } = await supabase
       .from('proveedor_tipos')
       .select('tipos_proveedor(nombre)')
@@ -350,25 +367,52 @@ export default function EvaluadorPage() {
 
       <div style={{ display: 'flex', height: 'calc(100vh - 59px)' }}>
 
-        <div style={{ width: '260px', minWidth: '260px', background: 'white', borderRight: '1px solid #EEEEEE', overflowY: 'auto' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #F0F0F0' }}>
-            <p style={{ fontSize: '11px', fontWeight: 600, color: '#888', margin: 0 }}>{proveedores.length} proveedores registrados</p>
+        {/* Lista proveedores */}
+        <div style={{ width: '260px', minWidth: '260px', background: 'white', borderRight: '1px solid #EEEEEE', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #F0F0F0' }}>
+            <input
+              type="text"
+              placeholder="Buscar por nombre o RUC..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '11px', outline: 'none', marginBottom: '6px', boxSizing: 'border-box' }}
+            />
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '11px', outline: 'none', background: 'white' }}>
+              <option value="todos">Todos los estados</option>
+              <option value="pendiente">Pendientes</option>
+              <option value="homologado">Homologados</option>
+              <option value="rechazado">Rechazados</option>
+            </select>
           </div>
-          {proveedores.map((prov) => {
-            const badge = estadoBadge[prov.estado] || estadoBadge.pendiente
-            return (
-              <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
-                style={{ padding: '12px 16px', borderBottom: '1px solid #F5F5F5', cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white', borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent' }}>
-                <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 2px' }}>{prov.razon_social}</p>
-                <p style={{ fontSize: '10px', color: '#888', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
-                <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
-                  {estadoTexto[prov.estado] || 'Pendiente'}
-                </span>
+          <div style={{ padding: '6px 12px', borderBottom: '1px solid #F0F0F0' }}>
+            <p style={{ fontSize: '10px', color: '#888', margin: 0 }}>{proveedoresFiltrados.length} proveedores</p>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {proveedoresFiltrados.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center' }}>
+                <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>Sin resultados</p>
               </div>
-            )
-          })}
+            )}
+            {proveedoresFiltrados.map((prov) => {
+              const badge = estadoBadge[prov.estado] || estadoBadge.pendiente
+              return (
+                <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
+                  style={{ padding: '12px 16px', borderBottom: '1px solid #F5F5F5', cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white', borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 2px' }}>{prov.razon_social}</p>
+                  <p style={{ fontSize: '10px', color: '#888', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
+                  <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
+                    {estadoTexto[prov.estado] || 'Pendiente'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
+        {/* Panel revision */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: '#F7F7F7' }}>
           {!seleccionado ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -379,7 +423,6 @@ export default function EvaluadorPage() {
             </div>
           ) : (
             <div style={{ maxWidth: '700px' }}>
-
               <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div>
@@ -429,16 +472,13 @@ export default function EvaluadorPage() {
               {documentos.length > 0 && (
                 <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '16px 20px', marginBottom: '12px' }}>
                   <h3 style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>Documentos de la empresa</h3>
-                  {documentos.map(doc => {
-                    const tieneVencimiento = ['Poliza de seguros contra terceros'].includes(doc.nombre)
-                    return (
-                      <FilaDoc key={doc.id} doc={doc} tabla="documentos"
-                        tieneVencimiento={tieneVencimiento}
-                        keyPrefix={`empresa-${doc.proveedor_id}`}
-                        procesando={procesando}
-                        onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
-                    )
-                  })}
+                  {documentos.map(doc => (
+                    <FilaDoc key={doc.id} doc={doc} tabla="documentos"
+                      tieneVencimiento={DOCS_CON_VENCIMIENTO.includes(doc.nombre)}
+                      keyPrefix={`empresa-${doc.proveedor_id}`}
+                      procesando={procesando}
+                      onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
+                  ))}
                 </div>
               )}
 
@@ -455,7 +495,7 @@ export default function EvaluadorPage() {
                       </div>
                       {docsConductor.filter(d => d.conductor_id === conductor.id).map(doc => (
                         <FilaDoc key={doc.id} doc={doc} tabla="documentos_conductor"
-                          tieneVencimiento={true}
+                          tieneVencimiento={DOCS_CON_VENCIMIENTO.includes(doc.nombre)}
                           keyPrefix={`conductor-${conductor.id}`}
                           procesando={procesando}
                           onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
@@ -481,7 +521,7 @@ export default function EvaluadorPage() {
                       </div>
                       {docsUnidad.filter(d => d.unidad_id === unidad.id).map(doc => (
                         <FilaDoc key={doc.id} doc={doc} tabla="documentos_unidad"
-                          tieneVencimiento={['SOAT', 'Revision tecnica', 'Certificado habilitacion vehicular MTC'].includes(doc.nombre)}
+                          tieneVencimiento={DOCS_CON_VENCIMIENTO.includes(doc.nombre)}
                           keyPrefix={`unidad-${unidad.id}`}
                           procesando={procesando}
                           onAprobar={aprobarDoc} onRechazar={rechazarDoc} onVerDoc={verDocumento} />
@@ -499,7 +539,6 @@ export default function EvaluadorPage() {
                   <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Este proveedor aun no ha cargado documentos</p>
                 </div>
               )}
-
             </div>
           )}
         </div>

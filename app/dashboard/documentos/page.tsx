@@ -18,8 +18,21 @@ const DOCS_INFORMATIVOS = [
   { nombre: 'Cartilla Informativa de Seguridad BASC', archivo: '/Cartilla_Seguridad_OMNI.pdf', desc: 'Informacion sobre el sistema BASC' },
 ]
 
-const DOCS_CONDUCTOR = ['Licencia de conducir', 'Antecedentes penales y policiales', 'SCTR']
-const DOCS_UNIDAD = ['SOAT', 'Revision tecnica', 'Tarjeta de propiedad', 'Certificado habilitacion vehicular MTC', 'Certificado GPS', 'Mantenimiento preventivo']
+const DOCS_CONDUCTOR = [
+  'Licencia de conducir',
+  'Antecedentes penales y policiales',
+  'SCTR',
+]
+
+const DOCS_UNIDAD = [
+  'SOAT',
+  'Revision tecnica',
+  'Tarjeta de propiedad',
+  'Certificado habilitacion vehicular MTC',
+  'Certificado GPS',
+  'Mantenimiento preventivo',
+  'Poliza de seguros contra terceros',
+]
 
 const diasParaVencer = (fechaVencimiento: string | null) => {
   if (!fechaVencimiento) return null
@@ -70,26 +83,18 @@ export default function DocumentosPage() {
     if (!prov) { router.push('/login'); return }
     setProveedor(prov)
 
-    console.log('proveedor id:', prov.id)
-
-    const { data: tiposProv, error: errorTipos } = await supabase
+    const { data: tiposProv } = await supabase
       .from('proveedor_tipos').select('tipo_id').eq('proveedor_id', prov.id)
-
-    console.log('tiposProv:', tiposProv, 'error:', errorTipos)
 
     let docsReq: any[] = []
 
     if (tiposProv && tiposProv.length > 0) {
       const tipoIds = tiposProv.map((t: any) => t.tipo_id)
-      console.log('tipoIds:', tipoIds)
-
-      const { data: docs, error: errorDocs } = await supabase
+      const { data: docs } = await supabase
         .from('documentos_requeridos')
         .select('*')
         .in('tipo_proveedor_id', tipoIds)
         .eq('activo', true)
-
-      console.log('docs requeridos:', docs?.length, 'error:', errorDocs)
 
       const nombresVistos = new Set()
       docsReq = (docs || []).filter(d => {
@@ -106,7 +111,6 @@ export default function DocumentosPage() {
       docsReq = docs || []
     }
 
-    console.log('docsReq final:', docsReq.length)
     setDocsRequeridos(docsReq)
 
     const nombresDocs = docsReq.map(d => d.nombre)
@@ -152,7 +156,7 @@ export default function DocumentosPage() {
   }
 
   const eliminarConductor = async (id: string) => {
-    if (!confirm('Seguro que deseas eliminar este conductor?')) return
+    if (!confirm('Seguro que deseas eliminar este conductor y todos sus documentos?')) return
     await supabase.from('documentos_conductor').delete().eq('conductor_id', id)
     await supabase.from('conductores').update({ activo: false }).eq('id', id)
     await cargarDatos()
@@ -168,7 +172,7 @@ export default function DocumentosPage() {
   }
 
   const eliminarUnidad = async (id: string) => {
-    if (!confirm('Seguro que deseas eliminar esta unidad?')) return
+    if (!confirm('Seguro que deseas eliminar esta unidad y todos sus documentos?')) return
     await supabase.from('documentos_unidad').delete().eq('unidad_id', id)
     await supabase.from('unidades').update({ activo: false }).eq('id', id)
     await cargarDatos()
@@ -203,6 +207,7 @@ export default function DocumentosPage() {
     setSubiendo(null)
   }
 
+  // Separar docs por categoria
   const docsEmpresa = docsRequeridos.filter(d =>
     !DOCS_CONDUCTOR.includes(d.nombre) && !DOCS_UNIDAD.includes(d.nombre)
   )
@@ -350,6 +355,7 @@ export default function DocumentosPage() {
 
       <div style={{ maxWidth: '780px', margin: '0 auto', padding: '28px 24px' }}>
 
+        {/* Documentos informativos */}
         <div style={{ background: '#E6F1FB', borderRadius: '12px', padding: '16px 20px', border: '1px solid #B5D4F4', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
             <span style={{ fontSize: '16px' }}>ℹ️</span>
@@ -366,6 +372,7 @@ export default function DocumentosPage() {
           </div>
         </div>
 
+        {/* Barra de progreso */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Progreso de carga documental</span>
@@ -377,12 +384,13 @@ export default function DocumentosPage() {
           <p style={{ fontSize: '11px', color: '#888', marginTop: '6px' }}>{progreso}% completado</p>
         </div>
 
+        {/* Documentos empresa */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🏢</div>
             <div>
               <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Documentos de la empresa</h2>
-              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{documentos.length} de {docsEmpresa.length} cargados</p>
+              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{documentos.length} de {docsEmpresa.length} cargados · Los formatos con ↓ deben descargarse, llenarse y subirse firmados</p>
             </div>
           </div>
           {docsEmpresa.map(doc => {
@@ -396,6 +404,7 @@ export default function DocumentosPage() {
           })}
         </div>
 
+        {/* Conductores */}
         {necesitaConductores && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
@@ -451,6 +460,7 @@ export default function DocumentosPage() {
           </div>
         )}
 
+        {/* Unidades */}
         {necesitaUnidades && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
