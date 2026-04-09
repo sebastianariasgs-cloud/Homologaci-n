@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
 export default function Notificaciones({ proveedorId, esEvaluador = false }: { proveedorId?: string, esEvaluador?: boolean }) {
+  const router = useRouter()
   const [notificaciones, setNotificaciones] = useState<any[]>([])
   const [abierto, setAbierto] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -89,23 +91,22 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
       if (diasRestantes < 0) {
         tipo = 'critico'
         titulo = 'Documento vencido'
-        mensaje = `"${doc.nombre}" venció hace ${Math.abs(diasRestantes)} días`
+        mensaje = `"${doc.nombre}" vencio hace ${Math.abs(diasRestantes)} dias`
       } else if (diasRestantes <= 7) {
         tipo = 'peligro'
         titulo = 'Documento por vencer'
-        mensaje = `"${doc.nombre}" vence en ${diasRestantes} días`
+        mensaje = `"${doc.nombre}" vence en ${diasRestantes} dias`
       } else if (diasRestantes <= 15) {
         tipo = 'advertencia'
         titulo = 'Documento por vencer'
-        mensaje = `"${doc.nombre}" vence en ${diasRestantes} días`
+        mensaje = `"${doc.nombre}" vence en ${diasRestantes} dias`
       } else if (diasRestantes <= 30) {
         tipo = 'info'
-        titulo = 'Documento próximo a vencer'
-        mensaje = `"${doc.nombre}" vence en ${diasRestantes} días`
+        titulo = 'Documento proximo a vencer'
+        mensaje = `"${doc.nombre}" vence en ${diasRestantes} dias`
       }
 
       if (tipo) {
-        // Verificar si ya existe notificación no leída del mismo mensaje
         const { data: existente } = await supabase
           .from('notificaciones')
           .select('id')
@@ -114,7 +115,6 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
           .eq('leida', false)
 
         if (!existente || existente.length === 0) {
-          // Verificar si ya se creó una notificación hoy por este mismo documento
           const { data: yaHoy } = await supabase
             .from('notificaciones')
             .select('id')
@@ -138,9 +138,11 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
     await cargarNotificaciones()
   }
 
-  const marcarLeida = async (id: string) => {
+  const marcarLeida = async (id: string, link?: string) => {
     await supabase.from('notificaciones').update({ leida: true }).eq('id', id)
     setNotificaciones(notificaciones.map(n => n.id === id ? { ...n, leida: true } : n))
+    setAbierto(false)
+    if (link) router.push(link)
   }
 
   const marcarTodasLeidas = async () => {
@@ -178,7 +180,7 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
           cursor: 'pointer', position: 'relative'
         }}>
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-          <path d="M7.5 1.5a4 4 0 014 4v2.5l1 1.5h-10l1-1.5V5.5a4 4 0 014-4z" stroke="#666" strokeWidth="1.2"/>
+          <path d="M7.5 1.5a4 4 0 014 4v2.5l1 1.5H2l1-1.5V5.5a4 4 0 014-4z" stroke="#666" strokeWidth="1.2"/>
           <path d="M6 12a1.5 1.5 0 003 0" stroke="#666" strokeWidth="1.2"/>
         </svg>
         {noLeidas > 0 && (
@@ -209,7 +211,7 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
             {noLeidas > 0 && (
               <button onClick={marcarTodasLeidas}
                 style={{ fontSize: '11px', color: '#C41230', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
-                Marcar todas como leídas
+                Marcar todas como leidas
               </button>
             )}
           </div>
@@ -221,18 +223,19 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
             {!loading && notificaciones.length === 0 && (
               <div style={{ textAlign: 'center', padding: '28px 16px' }}>
                 <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>Sin notificaciones</p>
-                <p style={{ fontSize: '11px', color: '#BBB', marginTop: '4px' }}>Todo está al día ✓</p>
+                <p style={{ fontSize: '11px', color: '#BBB', marginTop: '4px' }}>Todo esta al dia</p>
               </div>
             )}
             {notificaciones.map(n => {
               const estilo = tipoEstilo[n.tipo] || tipoEstilo.info
+              const tieneLink = !!n.link
               return (
                 <div key={n.id}
-                  onClick={() => marcarLeida(n.id)}
+                  onClick={() => marcarLeida(n.id, n.link)}
                   style={{
                     padding: '10px 16px', borderBottom: '1px solid #F5F5F5',
-                    cursor: 'pointer', background: n.leida ? 'white' : '#FAFAFA',
-                    transition: 'background 0.15s'
+                    cursor: tieneLink ? 'pointer' : 'default',
+                    background: n.leida ? 'white' : '#FAFAFA',
                   }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                     <div style={{
@@ -243,7 +246,10 @@ export default function Notificaciones({ proveedorId, esEvaluador = false }: { p
                       {tipoIcono[n.tipo] || '🔵'}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{n.titulo}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{n.titulo}</p>
+                        {tieneLink && <span style={{ fontSize: '10px', color: '#C41230' }}>→ Ver</span>}
+                      </div>
                       <p style={{ fontSize: '11px', color: '#666', marginTop: '2px', lineHeight: 1.4 }}>{n.mensaje}</p>
                       <p style={{ fontSize: '10px', color: '#AAA', marginTop: '3px' }}>
                         {new Date(n.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}

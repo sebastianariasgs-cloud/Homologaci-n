@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Notificaciones from '../components/Notificaciones'
 
 const DOCS_CON_VENCIMIENTO = [
@@ -159,8 +159,9 @@ function FilaDoc({ doc, tabla, tieneVencimiento, keyPrefix, procesando, onAproba
   )
 }
 
-export default function EvaluadorPage() {
+function EvaluadorContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [proveedores, setProveedores] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [seleccionado, setSeleccionado] = useState<any>(null)
@@ -174,17 +175,31 @@ export default function EvaluadorPage() {
   const [tipoProveedor, setTipoProveedor] = useState<string>('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
+  const [proveedorIdParam, setProveedorIdParam] = useState<string | null>(null)
 
   useEffect(() => { verificarRol() }, [])
 
+  useEffect(() => {
+    if (proveedores.length === 0) return
+    if (!proveedorIdParam) return
+    const prov = proveedores.find((p: any) => p.id === proveedorIdParam)
+    if (prov) seleccionarProveedor(prov)
+  }, [proveedores, proveedorIdParam])
+
   const verificarRol = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-    const { data: perfil } = await supabase
-      .from('perfiles').select('rol').eq('id', user.id).single()
-    if (perfil?.rol !== 'evaluador') { router.push('/dashboard'); return }
-    await cargarProveedores()
-  }
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) { router.push('/login'); return }
+  const { data: perfil } = await supabase
+    .from('perfiles').select('rol').eq('id', user.id).single()
+  if (perfil?.rol !== 'evaluador') { router.push('/dashboard'); return }
+  
+  // Leer el parámetro directamente desde window.location
+  const params = new URLSearchParams(window.location.search)
+  const id = params.get('proveedor')
+  if (id) setProveedorIdParam(id)
+  
+  await cargarProveedores()
+}
 
   const cargarProveedores = async () => {
     const { data } = await supabase
@@ -366,20 +381,12 @@ export default function EvaluadorPage() {
       <div style={{ height: '3px', background: '#C41230' }} />
 
       <div style={{ display: 'flex', height: 'calc(100vh - 59px)' }}>
-
-        {/* Lista proveedores */}
         <div style={{ width: '260px', minWidth: '260px', background: 'white', borderRight: '1px solid #EEEEEE', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid #F0F0F0' }}>
-            <input
-              type="text"
-              placeholder="Buscar por nombre o RUC..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '11px', outline: 'none', marginBottom: '6px', boxSizing: 'border-box' }}
-            />
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
+            <input type="text" placeholder="Buscar por nombre o RUC..."
+              value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+              style={{ width: '100%', padding: '7px 10px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '11px', outline: 'none', marginBottom: '6px', boxSizing: 'border-box' }} />
+            <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
               style={{ width: '100%', padding: '6px 10px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '11px', outline: 'none', background: 'white' }}>
               <option value="todos">Todos los estados</option>
               <option value="pendiente">Pendientes</option>
@@ -412,7 +419,6 @@ export default function EvaluadorPage() {
           </div>
         </div>
 
-        {/* Panel revision */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', background: '#F7F7F7' }}>
           {!seleccionado ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -544,5 +550,17 @@ export default function EvaluadorPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function EvaluadorPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F7F7' }}>
+        <p style={{ color: '#888', fontSize: '14px' }}>Cargando...</p>
+      </div>
+    }>
+      <EvaluadorContent />
+    </Suspense>
   )
 }

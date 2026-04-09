@@ -146,6 +146,37 @@ export default function DocumentosPage() {
     setLoading(false)
   }
 
+  const notificarEvaluador = async (nombreDoc: string, esActualizacion: boolean) => {
+    if (!proveedor) return
+
+    const hoyInicio = new Date()
+    hoyInicio.setHours(0, 0, 0, 0)
+
+    const titulo = esActualizacion ? 'Documento actualizado' : 'Nuevo documento cargado'
+    const mensaje = esActualizacion
+      ? `${proveedor.razon_social} actualizo "${nombreDoc}"`
+      : `${proveedor.razon_social} subio "${nombreDoc}"`
+
+    // Verificar si ya existe una notificacion de hoy por este mismo documento
+    const { data: yaHoy } = await supabase
+      .from('notificaciones')
+      .select('id')
+      .eq('proveedor_id', proveedor.id)
+      .eq('mensaje', mensaje)
+      .gte('created_at', hoyInicio.toISOString())
+
+    if (!yaHoy || yaHoy.length === 0) {
+      await supabase.from('notificaciones').insert({
+        proveedor_id: proveedor.id,
+        titulo,
+        mensaje,
+        tipo: 'info',
+        leida: false,
+        link: `/evaluador?proveedor=${proveedor.id}`,
+      })
+    }
+  }
+
   const agregarConductor = async () => {
     if (!nuevoConductor.trim() || !proveedor) return
     setAgregandoConductor(true)
@@ -194,6 +225,7 @@ export default function DocumentosPage() {
       if (tabla === 'documentos') setDocumentos(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
       else if (tabla === 'documentos_conductor') setDocsConductor(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
       else if (tabla === 'documentos_unidad') setDocsUnidad(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
+      await notificarEvaluador(nombreDoc, true)
     } else {
       const insertData: any = { ...nuevoDoc }
       insertData[campoId] = valorId
@@ -203,11 +235,11 @@ export default function DocumentosPage() {
       if (tabla === 'documentos') setDocumentos(prev => [...prev, inserted])
       else if (tabla === 'documentos_conductor') setDocsConductor(prev => [...prev, inserted])
       else if (tabla === 'documentos_unidad') setDocsUnidad(prev => [...prev, inserted])
+      await notificarEvaluador(nombreDoc, false)
     }
     setSubiendo(null)
   }
 
-  // Separar docs por categoria
   const docsEmpresa = docsRequeridos.filter(d =>
     !DOCS_CONDUCTOR.includes(d.nombre) && !DOCS_UNIDAD.includes(d.nombre)
   )
@@ -355,7 +387,6 @@ export default function DocumentosPage() {
 
       <div style={{ maxWidth: '780px', margin: '0 auto', padding: '28px 24px' }}>
 
-        {/* Documentos informativos */}
         <div style={{ background: '#E6F1FB', borderRadius: '12px', padding: '16px 20px', border: '1px solid #B5D4F4', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
             <span style={{ fontSize: '16px' }}>ℹ️</span>
@@ -372,7 +403,6 @@ export default function DocumentosPage() {
           </div>
         </div>
 
-        {/* Barra de progreso */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Progreso de carga documental</span>
@@ -384,7 +414,6 @@ export default function DocumentosPage() {
           <p style={{ fontSize: '11px', color: '#888', marginTop: '6px' }}>{progreso}% completado</p>
         </div>
 
-        {/* Documentos empresa */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🏢</div>
@@ -404,7 +433,6 @@ export default function DocumentosPage() {
           })}
         </div>
 
-        {/* Conductores */}
         {necesitaConductores && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
@@ -460,7 +488,6 @@ export default function DocumentosPage() {
           </div>
         )}
 
-        {/* Unidades */}
         {necesitaUnidades && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
