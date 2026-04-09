@@ -27,7 +27,11 @@ export default function LoginPage() {
     if (data.user) {
       const { data: perfil } = await supabase
         .from('perfiles').select('rol').eq('id', data.user.id).single()
-      router.push(perfil?.rol === 'evaluador' ? '/evaluador' : '/dashboard')
+      if (perfil?.rol === 'evaluador') router.push('/evaluador')
+      else if (perfil?.rol === 'comercial') router.push('/comercial')
+      else if (perfil?.rol === 'pricing') router.push('/pricing')
+      else if (perfil?.rol === 'admin') router.push('/evaluador')
+      else router.push('/dashboard')
     }
   }
 
