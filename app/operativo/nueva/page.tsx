@@ -20,6 +20,7 @@ export default function NuevaSolicitudPage() {
     bl_awb: '',
     consignatario: '',
     observaciones: '',
+    num_unidades: 1,
   })
 
   useEffect(() => { verificarRol() }, [])
@@ -41,8 +42,7 @@ export default function NuevaSolicitudPage() {
 
   const agregarDocumento = (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivos = Array.from(e.target.files || [])
-    const nuevos = archivos.map(f => ({ nombre: f.name, archivo: f }))
-    setDocumentos(prev => [...prev, ...nuevos])
+    setDocumentos(prev => [...prev, ...archivos.map(f => ({ nombre: f.name, archivo: f }))])
     e.target.value = ''
   }
 
@@ -73,21 +73,19 @@ export default function NuevaSolicitudPage() {
         bl_awb: form.bl_awb || null,
         consignatario: form.consignatario || null,
         observaciones: form.observaciones || null,
+        num_unidades: form.num_unidades,
         estado: 'pendiente',
       })
       .select().single()
 
     if (error) { alert('Error: ' + error.message); setGuardando(false); return }
 
-    // Subir documentos adjuntos
     if (documentos.length > 0) {
       setSubiendo(true)
       for (const doc of documentos) {
-        const ext = doc.archivo.name.split('.').pop()
         const ruta = `solicitudes/${sol.id}/${doc.nombre.replace(/\s/g, '_')}`
         const { error: uploadError } = await supabase.storage
-          .from('documentos')
-          .upload(ruta, doc.archivo, { upsert: true })
+          .from('documentos').upload(ruta, doc.archivo, { upsert: true })
         if (!uploadError) {
           await supabase.from('solicitud_documentos').insert({
             solicitud_id: sol.id,
@@ -132,18 +130,14 @@ export default function NuevaSolicitudPage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>
-                Direccion de recojo <span style={{ color: '#C41230' }}>*</span>
-              </label>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Direccion de recojo <span style={{ color: '#C41230' }}>*</span></label>
               <input type="text" value={form.direccion_recojo}
                 onChange={(e) => setForm({ ...form, direccion_recojo: e.target.value })}
                 placeholder="Terminal, muelle o direccion"
                 style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>
-                Direccion de entrega <span style={{ color: '#C41230' }}>*</span>
-              </label>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Direccion de entrega <span style={{ color: '#C41230' }}>*</span></label>
               <input type="text" value={form.direccion_entrega}
                 onChange={(e) => setForm({ ...form, direccion_entrega: e.target.value })}
                 placeholder="Almacen o direccion de destino"
@@ -151,11 +145,9 @@ export default function NuevaSolicitudPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>
-                Fecha de recojo <span style={{ color: '#C41230' }}>*</span>
-              </label>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Fecha de recojo <span style={{ color: '#C41230' }}>*</span></label>
               <input type="date" value={form.fecha_recojo}
                 onChange={(e) => setForm({ ...form, fecha_recojo: e.target.value })}
                 style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
@@ -170,6 +162,18 @@ export default function NuevaSolicitudPage() {
                 <option>Sobredimensionada</option>
                 <option>Fragil</option>
               </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Unidades requeridas <span style={{ color: '#C41230' }}>*</span></label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button onClick={() => setForm({ ...form, num_unidades: Math.max(1, form.num_unidades - 1) })}
+                  style={{ width: '32px', height: '38px', border: '1.5px solid #E8E8E8', borderRadius: '8px', background: 'white', fontSize: '16px', cursor: 'pointer', flexShrink: 0 }}>−</button>
+                <div style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #C41230', borderRadius: '8px', fontSize: '14px', fontWeight: 700, color: '#C41230', textAlign: 'center', background: '#FEF2F2' }}>
+                  {form.num_unidades}
+                </div>
+                <button onClick={() => setForm({ ...form, num_unidades: form.num_unidades + 1 })}
+                  style={{ width: '32px', height: '38px', border: '1.5px solid #E8E8E8', borderRadius: '8px', background: 'white', fontSize: '16px', cursor: 'pointer', flexShrink: 0 }}>+</button>
+              </div>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Peso (TN)</label>
@@ -213,25 +217,24 @@ export default function NuevaSolicitudPage() {
                     <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#E6F1FB', border: '1px solid #B5D4F4', borderRadius: '6px', padding: '4px 10px' }}>
                       <span style={{ fontSize: '11px', color: '#185FA5' }}>📄 {doc.nombre}</span>
                       <button onClick={() => eliminarDocumento(i)}
-                        style={{ background: 'none', border: 'none', color: '#C41230', cursor: 'pointer', fontSize: '12px', padding: '0', lineHeight: 1 }}>×</button>
+                        style={{ background: 'none', border: 'none', color: '#C41230', cursor: 'pointer', fontSize: '12px', padding: 0, lineHeight: 1 }}>×</button>
                     </div>
                   ))}
                 </div>
               )}
               <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'white', border: '1px solid #E8E8E8', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', color: '#666' }}>
                 + Adjuntar documentos
-                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx"
-                  style={{ display: 'none' }} onChange={agregarDocumento} />
+                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style={{ display: 'none' }} onChange={agregarDocumento} />
               </label>
               <span style={{ fontSize: '10px', color: '#AAA', marginLeft: '8px' }}>PDF, JPG, PNG, DOCX, XLSX</span>
             </div>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Observaciones</label>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }}>Instrucciones para el transportista</label>
             <textarea value={form.observaciones}
               onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
-              placeholder="Instrucciones especiales, coordinar con almacen, etc."
+              placeholder="Instrucciones especiales, coordinar con almacen, hora de llegada, etc."
               style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'none', height: '80px', boxSizing: 'border-box' }} />
           </div>
 
