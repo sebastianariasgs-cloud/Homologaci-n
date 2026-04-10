@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Notificaciones from '../components/Notificaciones'
+import BotonAdmin from '../components/BotonAdmin'
 
 const DOCS_CON_VENCIMIENTO = [
   'Poliza de seguros contra terceros',
@@ -191,7 +192,7 @@ function EvaluadorContent() {
   if (!user) { router.push('/login'); return }
   const { data: perfil } = await supabase
     .from('perfiles').select('rol').eq('id', user.id).single()
-  if (perfil?.rol !== 'evaluador') { router.push('/dashboard'); return }
+  if (!['evaluador', 'admin'].includes(perfil?.rol)) { router.push('/dashboard'); return }
   
   // Leer el parámetro directamente desde window.location
   const params = new URLSearchParams(window.location.search)
@@ -200,6 +201,7 @@ function EvaluadorContent() {
   
   await cargarProveedores()
 }
+
 
   const cargarProveedores = async () => {
     const { data } = await supabase
@@ -374,6 +376,7 @@ function EvaluadorContent() {
           <Notificaciones esEvaluador={true} />
           <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
             style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <BotonAdmin />
             Salir
           </button>
         </div>

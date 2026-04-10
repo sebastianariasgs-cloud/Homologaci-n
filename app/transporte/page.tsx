@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import BotonAdmin from '../components/BotonAdmin'
+
 
 const estadoBadgeMap: { [key: string]: { bg: string, color: string, texto: string } } = {
   pendiente: { bg: '#FFF7ED', color: '#C2410C', texto: 'Pendiente' },
@@ -284,6 +286,7 @@ export default function TransportePage() {
         </div>
         <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
           style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <BotonAdmin />
           Salir
         </button>
       </nav>

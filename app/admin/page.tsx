@@ -26,30 +26,30 @@ export default function AdminPage() {
   const [solicitudesRecientes, setSolicitudesRecientes] = useState<any[]>([])
   const [pestana, setPestana] = useState<'overview' | 'proveedores' | 'cotizaciones' | 'transporte'>('overview')
 
-  useEffect(() => { verificarRol() }, [])
-
-  const verificarRol = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
-    const { data: perfil } = await supabase
-      .from('perfiles').select('rol').eq('id', user.id).single()
-    if (perfil?.rol !== 'admin') { router.push('/login'); return }
-    await cargarDatos()
-  }
+  useEffect(() => {
+    const init = async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { router.push('/login'); return }
+        const { data: perfil } = await supabase
+         .from('perfiles').select('rol').eq('id', session.user.id).single()
+        if (perfil?.rol !== 'admin') { router.push('/login'); return }
+        await cargarDatos()
+    }
+     init()
+    }, [])
 
   const cargarDatos = async () => {
     const ahora = new Date()
     const inicioMes = new Date(ahora.getFullYear(), ahora.getMonth(), 1).toISOString()
     const en30dias = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-    // Proveedores
-    const { data: provs } = await supabase.from('proveedores').select('id, razon_social, ruc, estado, created_at').order('created_at', { ascending: false })
+    const { data: provs } = await supabase
+      .from('proveedores').select('id, razon_social, ruc, estado, created_at').order('created_at', { ascending: false })
     const totalProvs = provs?.length || 0
     const homologados = provs?.filter(p => p.estado === 'homologado').length || 0
     const pendientes = provs?.filter(p => p.estado === 'pendiente').length || 0
     setProveedoresRecientes((provs || []).slice(0, 5))
 
-    // Cotizaciones
     const { data: cots } = await supabase
       .from('cotizaciones')
       .select('*, clientes(razon_social)')
@@ -60,7 +60,6 @@ export default function AdminPage() {
     const valorTotal = cots?.reduce((acc, c) => acc + (c.total_final || 0), 0) || 0
     setCotizacionesRecientes((cots || []).slice(0, 5))
 
-    // Solicitudes transporte
     const { data: sols } = await supabase
       .from('solicitudes_transporte')
       .select('*')
@@ -71,7 +70,6 @@ export default function AdminPage() {
     const solsEntregadas = sols?.filter(s => s.estado === 'entregada').length || 0
     setSolicitudesRecientes((sols || []).slice(0, 5))
 
-    // Documentos por vencer
     const { data: docsVencer } = await supabase
       .from('documentos')
       .select('id')
@@ -79,7 +77,6 @@ export default function AdminPage() {
       .eq('estado', 'aprobado')
     const totalVencer = docsVencer?.length || 0
 
-    // Usuarios activos
     const { data: perfiles } = await supabase.from('perfiles').select('id')
     const totalUsuarios = perfiles?.length || 0
 
@@ -122,26 +119,26 @@ export default function AdminPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
       <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
           <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
           <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Panel de administracion</span>
+          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <a href="/evaluador" style={{ fontSize: '11px', color: '#666', textDecoration: 'none', padding: '5px 10px', borderRadius: '6px', border: '1px solid #E8E8E8', background: '#F9F9F9' }}>🏢 Homologacion</a>
+            <a href="/comercial" style={{ fontSize: '11px', color: '#666', textDecoration: 'none', padding: '5px 10px', borderRadius: '6px', border: '1px solid #E8E8E8', background: '#F9F9F9' }}>📋 Cotizaciones</a>
+            <a href="/transporte" style={{ fontSize: '11px', color: '#666', textDecoration: 'none', padding: '5px 10px', borderRadius: '6px', border: '1px solid #E8E8E8', background: '#F9F9F9' }}>🚛 Transporte</a>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <a href="/evaluador" style={{ fontSize: '12px', color: '#666', textDecoration: 'none', background: '#F5F5F5', padding: '6px 12px', borderRadius: '7px', border: '1px solid #E8E8E8' }}>Homologacion</a>
-          <a href="/comercial" style={{ fontSize: '12px', color: '#666', textDecoration: 'none', background: '#F5F5F5', padding: '6px 12px', borderRadius: '7px', border: '1px solid #E8E8E8' }}>Cotizaciones</a>
-          <a href="/transporte" style={{ fontSize: '12px', color: '#666', textDecoration: 'none', background: '#F5F5F5', padding: '6px 12px', borderRadius: '7px', border: '1px solid #E8E8E8' }}>Transporte</a>
-          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
-            Salir
-          </button>
-        </div>
+        <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
+          style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+          Salir
+        </button>
       </nav>
       <div style={{ height: '3px', background: '#C41230' }} />
 
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '28px 24px' }}>
 
-        {/* KPIs principales */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
           {[
             { label: 'Proveedores homologados', valor: stats.proveedores_homologados, total: stats.proveedores_total, bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0' },
@@ -152,13 +149,12 @@ export default function AdminPage() {
             <div key={kpi.label} style={{ background: kpi.bg, borderRadius: '12px', padding: '16px', border: `1px solid ${kpi.border}` }}>
               <p style={{ fontSize: '11px', color: '#888', margin: '0 0 8px' }}>{kpi.label}</p>
               <p style={{ fontSize: '28px', fontWeight: 700, color: kpi.color, margin: 0, lineHeight: 1 }}>{kpi.valor}</p>
-              {kpi.total && <p style={{ fontSize: '10px', color: '#888', margin: '4px 0 0' }}>de {kpi.total} total</p>}
-              {kpi.sub && <p style={{ fontSize: '10px', color: '#888', margin: '4px 0 0' }}>{kpi.sub}</p>}
+              {(kpi as any).total && <p style={{ fontSize: '10px', color: '#888', margin: '4px 0 0' }}>de {(kpi as any).total} total</p>}
+              {(kpi as any).sub && <p style={{ fontSize: '10px', color: '#888', margin: '4px 0 0' }}>{(kpi as any).sub}</p>}
             </div>
           ))}
         </div>
 
-        {/* Segunda fila KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
           {[
             { label: 'Valor cotizaciones mes', valor: `USD ${stats.cotizaciones_valor.toLocaleString('es-PE', { minimumFractionDigits: 0 })}`, bg: '#F7F7F7', color: '#1a1a1a', border: '#EEEEEE' },
@@ -173,7 +169,6 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Pestanas */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           {[
             { id: 'overview', label: 'Vista general' },
@@ -182,17 +177,14 @@ export default function AdminPage() {
             { id: 'transporte', label: 'Transporte' },
           ].map(tab => (
             <button key={tab.id} onClick={() => setPestana(tab.id as any)}
-              style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: pestana === tab.id ? '#C41230' : 'white', color: pestana === tab.id ? 'white' : '#666', border: pestana === tab.id ? 'none' : '1px solid #EEEEEE' } as any}>
+              style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: pestana === tab.id ? '#C41230' : 'white', color: pestana === tab.id ? 'white' : '#666', border: pestana === tab.id ? '1px solid #C41230' : '1px solid #EEEEEE' }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Vista general */}
         {pestana === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-
-            {/* Proveedores recientes */}
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Proveedores recientes</p>
@@ -217,7 +209,6 @@ export default function AdminPage() {
               )}
             </div>
 
-            {/* Cotizaciones recientes */}
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Cotizaciones del mes</p>
@@ -245,7 +236,6 @@ export default function AdminPage() {
               )}
             </div>
 
-            {/* Solicitudes recientes */}
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Solicitudes de transporte</p>
@@ -272,7 +262,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Proveedores */}
         {pestana === 'proveedores' && (
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -308,7 +297,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Cotizaciones */}
         {pestana === 'cotizaciones' && (
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -347,7 +335,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Transporte */}
         {pestana === 'transporte' && (
           <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F0F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import BotonAdmin from '../../components/BotonAdmin'
 
 export default function NuevaSolicitudPage() {
   const router = useRouter()
@@ -113,6 +114,7 @@ export default function NuevaSolicitudPage() {
         </div>
         <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
           style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <BotonAdmin />
           Salir
         </button>
       </nav>
