@@ -11,9 +11,8 @@ export default function PricingPage() {
   const [tarifasImportacion, setTarifasImportacion] = useState<any[]>([])
   const [tarifasExportacion, setTarifasExportacion] = useState<any[]>([])
   const [pestana, setPestana] = useState<'importacion' | 'exportacion'>('importacion')
-  const [historial, setHistorial] = useState<any[]>([])
-  const [resultado, setResultado] = useState<any>(null)
   const [filtro, setFiltro] = useState('')
+  const [resultado, setResultado] = useState<any>(null)
 
   useEffect(() => { verificarRol() }, [])
 
@@ -47,12 +46,34 @@ export default function PricingPage() {
   const evaluarFormula = (valor: any): number => {
     if (valor === null || valor === undefined) return 0
     if (typeof valor === 'number') return valor
+    if (valor instanceof Date) return 0
     const str = String(valor).replace('=', '').trim()
+    if (!str) return 0
     try {
       return Function('"use strict"; return (' + str + ')')()
     } catch {
-      return 0
+      return parseFloat(str) || 0
     }
+  }
+
+  const parsearFecha = (valor: any): string | null => {
+    if (!valor) return null
+    if (valor instanceof Date) {
+      if (isNaN(valor.getTime())) return null
+      return valor.toISOString().split('T')[0]
+    }
+    if (typeof valor === 'string') {
+      if (valor === 'SPOT' || valor === '') return null
+      try {
+        const d = new Date(valor)
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
+      } catch { return null }
+    }
+    if (typeof valor === 'number') {
+      const d = new Date((valor - 25569) * 86400 * 1000)
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
+    }
+    return null
   }
 
   const procesarExcel = async (archivo: File) => {
@@ -62,7 +83,7 @@ export default function PricingPage() {
     try {
       const XLSX = await import('xlsx')
       const buffer = await archivo.arrayBuffer()
-      const wb = XLSX.read(buffer, { type: 'array' })
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: true, cellNF: false, cellText: false })
 
       let totalImportacion = 0
       let totalExportacion = 0
@@ -74,22 +95,21 @@ export default function PricingPage() {
       // Procesar hoja IMPORTACION
       if (wb.SheetNames.includes('IMPORTACION')) {
         const ws = wb.Sheets['IMPORTACION']
-        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' })
 
-        // Buscar fila de headers
         let headerRow = -1
         for (let i = 0; i < rows.length; i++) {
-          if (rows[i] && rows[i][0] === 'PAIS') { headerRow = i; break }
+          if (rows[i] && String(rows[i][0]).trim() === 'PAIS') { headerRow = i; break }
         }
 
         if (headerRow >= 0) {
           const dataRows = rows.slice(headerRow + 1).filter(r => r[0] && r[2] && r[3])
           const inserts = dataRows.map(r => ({
-            pais: r[0],
-            agente: r[1],
-            carrier: r[2],
-            pol: r[3],
-            pod: r[4],
+            pais: String(r[0] || '').trim(),
+            agente: r[1] ? String(r[1]).trim() : null,
+            carrier: String(r[2] || '').trim(),
+            pol: String(r[3] || '').trim(),
+            pod: String(r[4] || '').trim(),
             tarifa_20gp: evaluarFormula(r[5]),
             tarifa_40hq: evaluarFormula(r[6]),
             tarifa_40nor: evaluarFormula(r[7]),
@@ -98,15 +118,16 @@ export default function PricingPage() {
             total_20gp: evaluarFormula(r[10]),
             total_40hq: evaluarFormula(r[11]),
             total_40nor: evaluarFormula(r[12]),
-            transit_time: r[13] ? String(r[13]) : null,
-            free_days: r[14] ? String(r[14]) : null,
-            validez: r[15] ? new Date(r[15]).toISOString().split('T')[0] : null,
+            transit_time: r[13] ? String(r[13]).trim() : null,
+            free_days: r[14] ? String(r[14]).trim() : null,
+            validez: parsearFecha(r[15]),
             activo: true,
           }))
 
           if (inserts.length > 0) {
-            await supabase.from('tarifario_importacion').insert(inserts)
-            totalImportacion = inserts.length
+            const { error } = await supabase.from('tarifario_importacion').insert(inserts)
+            if (error) console.error('Error importacion:', error)
+            else totalImportacion = inserts.length
           }
         }
       }
@@ -114,36 +135,37 @@ export default function PricingPage() {
       // Procesar hoja EXPORTACION
       if (wb.SheetNames.includes('EXPORTACION')) {
         const ws = wb.Sheets['EXPORTACION']
-        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' })
 
         let headerRow = -1
         for (let i = 0; i < rows.length; i++) {
-          if (rows[i] && rows[i][0] === 'CARRIER') { headerRow = i; break }
+          if (rows[i] && String(rows[i][0]).trim() === 'CARRIER') { headerRow = i; break }
         }
 
         if (headerRow >= 0) {
           const dataRows = rows.slice(headerRow + 1).filter(r => r[0] && r[3])
           const inserts = dataRows.map(r => ({
-            carrier: r[0],
-            continente: r[1],
-            pais: r[2],
-            pol: r[3],
-            pod: r[4],
+            carrier: String(r[0] || '').trim(),
+            continente: r[1] ? String(r[1]).trim() : null,
+            pais: String(r[2] || '').trim(),
+            pol: String(r[3] || '').trim(),
+            pod: String(r[4] || '').trim(),
             tarifa_20gp: evaluarFormula(r[5]),
             tarifa_40hq: evaluarFormula(r[6]),
             thc: evaluarFormula(r[7]),
             bl: evaluarFormula(r[8]),
             total: evaluarFormula(r[9]),
-            transit_time: r[10] ? String(r[10]) : null,
-            free_days_origen: r[11] ? Number(r[11]) : null,
-            free_days_destino: r[12] ? Number(r[12]) : null,
-            validez: r[13] ? (r[13] instanceof Date ? r[13].toISOString().split('T')[0] : String(r[13]) === 'SPOT' ? null : new Date(r[13]).toISOString().split('T')[0]) : null,
+            transit_time: r[10] ? String(r[10]).trim() : null,
+            free_days_origen: r[11] ? parseInt(String(r[11])) || null : null,
+            free_days_destino: r[12] ? parseInt(String(r[12])) || null : null,
+            validez: parsearFecha(r[13]),
             activo: true,
           }))
 
           if (inserts.length > 0) {
-            await supabase.from('tarifario_exportacion').insert(inserts)
-            totalExportacion = inserts.length
+            const { error } = await supabase.from('tarifario_exportacion').insert(inserts)
+            if (error) console.error('Error exportacion:', error)
+            else totalExportacion = inserts.length
           }
         }
       }
@@ -180,12 +202,10 @@ export default function PricingPage() {
           <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
           <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Modulo de pricing</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
-            Salir
-          </button>
-        </div>
+        <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
+          style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+          Salir
+        </button>
       </nav>
       <div style={{ height: '3px', background: '#C41230' }} />
 
@@ -212,7 +232,7 @@ export default function PricingPage() {
             <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>📊</div>
             <div>
               <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Subir nuevo tarifario</h2>
-              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>Al subir un nuevo archivo, el tarifario anterior quedara inactivo automaticamente</p>
+              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>Al subir un nuevo archivo el tarifario anterior quedara inactivo automaticamente</p>
             </div>
           </div>
 
@@ -226,24 +246,24 @@ export default function PricingPage() {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'start' }}>
-            <div>
-              <label style={{
-                display: 'block', border: '2px dashed #FECACA', borderRadius: '10px',
-                padding: '20px', textAlign: 'center', background: '#FEF9F9', cursor: 'pointer'
-              }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#C41230', margin: '0 0 4px' }}>
-                  {procesando ? 'Procesando...' : '↑ Seleccionar archivo Excel'}
-                </p>
-                <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>Arrastra o haz clic · Solo archivos .xlsx</p>
-                <input type="file" accept=".xlsx" style={{ display: 'none' }}
-                  disabled={procesando}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) procesarExcel(f) }} />
-              </label>
-            </div>
-            <div style={{ background: '#F9F9F9', borderRadius: '8px', padding: '12px', minWidth: '200px' }}>
-              <p style={{ fontSize: '11px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 6px' }}>Requisitos del archivo</p>
-              {['Hojas: IMPORTACION y EXPORTACION', 'Mantener el orden de columnas', 'Las formulas se calculan automaticamente', 'Fechas en formato DD/MM/AAAA'].map(req => (
-                <div key={req} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginBottom: '4px' }}>
+            <label style={{ display: 'block', border: '2px dashed #FECACA', borderRadius: '10px', padding: '20px', textAlign: 'center', background: '#FEF9F9', cursor: procesando ? 'not-allowed' : 'pointer' }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#C41230', margin: '0 0 4px' }}>
+                {procesando ? 'Procesando...' : '↑ Seleccionar archivo Excel'}
+              </p>
+              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>Arrastra o haz clic · Solo archivos .xlsx</p>
+              <input type="file" accept=".xlsx" style={{ display: 'none' }}
+                disabled={procesando}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) procesarExcel(f) }} />
+            </label>
+            <div style={{ background: '#F9F9F9', borderRadius: '8px', padding: '12px', minWidth: '220px' }}>
+              <p style={{ fontSize: '11px', fontWeight: 600, color: '#1a1a1a', margin: '0 0 8px' }}>Requisitos del archivo</p>
+              {[
+                'Hojas: IMPORTACION y EXPORTACION',
+                'Mantener el orden de columnas',
+                'Las formulas se calculan automaticamente',
+                'Fechas en formato DD/MM/AAAA',
+              ].map(req => (
+                <div key={req} style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', marginBottom: '5px' }}>
                   <span style={{ width: '14px', height: '14px', background: '#F0FDF4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '8px', color: '#15803D', flexShrink: 0, marginTop: '1px' }}>✓</span>
                   <span style={{ fontSize: '10px', color: '#666' }}>{req}</span>
                 </div>
@@ -282,11 +302,11 @@ export default function PricingPage() {
                 <thead>
                   <tr style={{ background: '#F9F9F9', borderBottom: '1px solid #EEEEEE' }}>
                     {pestana === 'importacion'
-                      ? ['Pais', 'Carrier', 'POL', 'POD', "20' GP", "40' HQ", "40' NOR", 'THC', 'Transit', 'Free days', 'Validez'].map(col => (
-                        <th key={col} style={{ padding: '9px 12px', fontSize: '10px', fontWeight: 600, color: '#666', textAlign: 'left', whiteSpace: 'nowrap' }}>{col}</th>
+                      ? ['Pais', 'Carrier', 'Agente', 'POL', 'POD', "20'GP", "40'HQ", "40'NOR", 'THC', 'BL', 'Total 20', 'Total 40', 'Total NOR', 'Transit', 'Free days', 'Validez'].map(col => (
+                        <th key={col} style={{ padding: '9px 10px', fontSize: '10px', fontWeight: 600, color: '#666', textAlign: 'left', whiteSpace: 'nowrap' }}>{col}</th>
                       ))
-                      : ['Carrier', 'Pais', 'POL', 'POD', "20' GP", "40' HQ", 'THC', 'Transit', 'Free Orig', 'Free Dest', 'Validez'].map(col => (
-                        <th key={col} style={{ padding: '9px 12px', fontSize: '10px', fontWeight: 600, color: '#666', textAlign: 'left', whiteSpace: 'nowrap' }}>{col}</th>
+                      : ['Carrier', 'Continente', 'Pais', 'POL', 'POD', "20'GP", "40'HQ", 'THC', 'BL', 'Total', 'Transit', 'Free Orig', 'Free Dest', 'Validez'].map(col => (
+                        <th key={col} style={{ padding: '9px 10px', fontSize: '10px', fontWeight: 600, color: '#666', textAlign: 'left', whiteSpace: 'nowrap' }}>{col}</th>
                       ))
                     }
                   </tr>
@@ -296,17 +316,22 @@ export default function PricingPage() {
                     <tr key={t.id} style={{ borderBottom: '1px solid #F5F5F5', background: i % 2 === 0 ? 'white' : '#FAFAFA' }}>
                       {pestana === 'importacion' ? (
                         <>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: '#1a1a1a' }}>{t.pais}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.carrier}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.pol}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.pod}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600 }}>USD {t.total_20gp?.toFixed(0)}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600 }}>USD {t.total_40hq?.toFixed(0)}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600 }}>USD {t.total_40nor?.toFixed(0)}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>USD {t.thc}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.transit_time || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.free_days || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px' }}>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap' }}>{t.pais}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.carrier}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.agente || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.pol}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.pod}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600 }}>{t.tarifa_20gp?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600 }}>{t.tarifa_40hq?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600 }}>{t.tarifa_40nor?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.thc || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.bl || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#C41230' }}>{t.total_20gp?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#C41230' }}>{t.total_40hq?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#C41230' }}>{t.total_40nor?.toFixed(0)}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.transit_time || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.free_days || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '20px', background: t.validez ? '#F0FDF4' : '#F5F5F5', color: t.validez ? '#15803D' : '#888' }}>
                               {t.validez ? new Date(t.validez).toLocaleDateString('es-PE') : 'SPOT'}
                             </span>
@@ -314,17 +339,20 @@ export default function PricingPage() {
                         </>
                       ) : (
                         <>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: '#1a1a1a' }}>{t.carrier}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.pais}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.pol}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.pod}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600 }}>USD {t.tarifa_20gp?.toFixed(0) || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 600 }}>USD {t.tarifa_40hq?.toFixed(0) || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>USD {t.thc || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.transit_time || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.free_days_origen || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#666' }}>{t.free_days_destino || '—'}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px' }}>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap' }}>{t.carrier}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.continente || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.pais}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.pol}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.pod}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600 }}>{t.tarifa_20gp?.toFixed(0) || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600 }}>{t.tarifa_40hq?.toFixed(0) || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.thc || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.bl || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', fontWeight: 600, color: '#C41230' }}>{t.total?.toFixed(0) || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666', whiteSpace: 'nowrap' }}>{t.transit_time || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.free_days_origen || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', color: '#666' }}>{t.free_days_destino || '—'}</td>
+                          <td style={{ padding: '7px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '20px', background: t.validez ? '#F0FDF4' : '#F5F5F5', color: t.validez ? '#15803D' : '#888' }}>
                               {t.validez ? new Date(t.validez).toLocaleDateString('es-PE') : 'SPOT'}
                             </span>

@@ -30,6 +30,8 @@ export default function LoginPage() {
       if (perfil?.rol === 'evaluador') router.push('/evaluador')
       else if (perfil?.rol === 'comercial') router.push('/comercial')
       else if (perfil?.rol === 'pricing') router.push('/pricing')
+      else if (perfil?.rol === 'operativo_sli') router.push('/operativo')
+      else if (perfil?.rol === 'transporte') router.push('/transporte')
       else if (perfil?.rol === 'admin') router.push('/evaluador')
       else router.push('/dashboard')
     }
