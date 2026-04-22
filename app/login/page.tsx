@@ -32,6 +32,8 @@ export default function LoginPage() {
       else if (perfil?.rol === 'comercial') router.push('/comercial')
       else if (perfil?.rol === 'pricing') router.push('/pricing')
       else if (perfil?.rol === 'operativo_sli') router.push('/operativo')
+      else if (perfil?.rol === 'admin_operativo') router.push('/operativo')
+      else if (perfil?.rol === 'supervisor_sli') router.push('/operativo')
       else if (perfil?.rol === 'transporte') router.push('/transporte')
       else if (perfil?.rol === 'admin') router.push('/admin')
       else router.push('/dashboard')
@@ -46,7 +48,10 @@ export default function LoginPage() {
         <div style={{ width: '100%', maxWidth: '440px' }}>
 
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-            <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '48px', marginBottom: '16px' }} />
+            <img
+              src="/LogoOmni.png"
+              alt="Omni Logistics"
+              style={{ height: '56px', display: 'block', margin: '0 auto 16px' }} />
             <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#1a1a1a', marginBottom: '6px' }}>
               Omni Portal
             </h1>
