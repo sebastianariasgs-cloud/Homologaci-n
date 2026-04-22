@@ -8,14 +8,14 @@ import Notificaciones from '../../components/Notificaciones'
 const DOCS_FORMATOS: { [key: string]: string } = {
   'Registro de proveedores': '/Registro_de_Proveedores.xlsx',
   'Acuerdo de seguridad': '/Acuerdo_de_Seguridad.docx',
-  'Declaracion jurada de licitud': '/Declaracion_Jurada_Licitud.docx',
+  'Declaración jurada de licitud': '/Declaracion_Jurada_Licitud.docx',
   'Datos de beneficiarios finales': '/DJ_Beneficiario_Final.docx',
   'Acuerdo de confidencialidad': '/Acuerdo_Confidencialidad.docx',
 }
 
 const DOCS_INFORMATIVOS = [
   { nombre: 'Carta de Compromiso', archivo: '/Carta_Compromiso.pdf', desc: 'Leer antes de iniciar el proceso' },
-  { nombre: 'Cartilla Informativa de Seguridad BASC', archivo: '/Cartilla_Seguridad_OMNI.pdf', desc: 'Informacion sobre el sistema BASC' },
+  { nombre: 'Cartilla Informativa de Seguridad BASC', archivo: '/Cartilla_Seguridad_OMNI.pdf', desc: 'Información sobre el sistema BASC' },
 ]
 
 const DOCS_CONDUCTOR = [
@@ -26,12 +26,24 @@ const DOCS_CONDUCTOR = [
 
 const DOCS_UNIDAD = [
   'SOAT',
-  'Revision tecnica',
+  'Revisión técnica',
   'Tarjeta de propiedad',
-  'Certificado habilitacion vehicular MTC',
+  'Certificado de habilitación vehicular MTC',
   'Certificado GPS',
   'Mantenimiento preventivo',
-  'Poliza de seguros contra terceros',
+  'Póliza de seguros contra terceros',
+]
+
+const TIPOS_UNIDAD = [
+  'Furgón',
+  'Semitrailer',
+  'Trailer',
+  'Cisterna',
+  'Volquete',
+  'Camión baranda',
+  'Cama baja',
+  'Cama cuna',
+  'Otro',
 ]
 
 const diasParaVencer = (fechaVencimiento: string | null) => {
@@ -65,7 +77,8 @@ export default function DocumentosPage() {
   const [loading, setLoading] = useState(true)
   const [subiendo, setSubiendo] = useState<string | null>(null)
   const [nuevoConductor, setNuevoConductor] = useState('')
-  const [nuevaUnidad, setNuevaUnidad] = useState('')
+  const [nuevaPlaca, setNuevaPlaca] = useState('')
+  const [nuevoTipoUnidad, setNuevoTipoUnidad] = useState('Semitrailer')
   const [agregandoConductor, setAgregandoConductor] = useState(false)
   const [agregandoUnidad, setAgregandoUnidad] = useState(false)
   const [docsRequeridos, setDocsRequeridos] = useState<any[]>([])
@@ -148,30 +161,18 @@ export default function DocumentosPage() {
 
   const notificarEvaluador = async (nombreDoc: string, esActualizacion: boolean) => {
     if (!proveedor) return
-
     const hoyInicio = new Date()
     hoyInicio.setHours(0, 0, 0, 0)
-
     const titulo = esActualizacion ? 'Documento actualizado' : 'Nuevo documento cargado'
     const mensaje = esActualizacion
-      ? `${proveedor.razon_social} actualizo "${nombreDoc}"`
-      : `${proveedor.razon_social} subio "${nombreDoc}"`
-
-    // Verificar si ya existe una notificacion de hoy por este mismo documento
+      ? `${proveedor.razon_social} actualizó "${nombreDoc}"`
+      : `${proveedor.razon_social} subió "${nombreDoc}"`
     const { data: yaHoy } = await supabase
-      .from('notificaciones')
-      .select('id')
-      .eq('proveedor_id', proveedor.id)
-      .eq('mensaje', mensaje)
-      .gte('created_at', hoyInicio.toISOString())
-
+      .from('notificaciones').select('id').eq('proveedor_id', proveedor.id)
+      .eq('mensaje', mensaje).gte('created_at', hoyInicio.toISOString())
     if (!yaHoy || yaHoy.length === 0) {
       await supabase.from('notificaciones').insert({
-        proveedor_id: proveedor.id,
-        titulo,
-        mensaje,
-        tipo: 'info',
-        leida: false,
+        proveedor_id: proveedor.id, titulo, mensaje, tipo: 'info', leida: false,
         link: `/evaluador?proveedor=${proveedor.id}`,
       })
     }
@@ -180,30 +181,38 @@ export default function DocumentosPage() {
   const agregarConductor = async () => {
     if (!nuevoConductor.trim() || !proveedor) return
     setAgregandoConductor(true)
-    await supabase.from('conductores').insert({ proveedor_id: proveedor.id, nombre_completo: nuevoConductor.trim() })
+    await supabase.from('conductores').insert({
+      proveedor_id: proveedor.id,
+      nombre_completo: nuevoConductor.trim(),
+    })
     setNuevoConductor('')
     setAgregandoConductor(false)
     await cargarDatos()
   }
 
   const eliminarConductor = async (id: string) => {
-    if (!confirm('Seguro que deseas eliminar este conductor y todos sus documentos?')) return
+    if (!confirm('¿Deseas eliminar este conductor y todos sus documentos?')) return
     await supabase.from('documentos_conductor').delete().eq('conductor_id', id)
     await supabase.from('conductores').update({ activo: false }).eq('id', id)
     await cargarDatos()
   }
 
   const agregarUnidad = async () => {
-    if (!nuevaUnidad.trim() || !proveedor) return
+    if (!nuevaPlaca.trim() || !proveedor) return
     setAgregandoUnidad(true)
-    await supabase.from('unidades').insert({ proveedor_id: proveedor.id, placa: nuevaUnidad.trim().toUpperCase() })
-    setNuevaUnidad('')
+    await supabase.from('unidades').insert({
+      proveedor_id: proveedor.id,
+      placa: nuevaPlaca.trim().toUpperCase(),
+      tipo: nuevoTipoUnidad,
+    })
+    setNuevaPlaca('')
+    setNuevoTipoUnidad('Semitrailer')
     setAgregandoUnidad(false)
     await cargarDatos()
   }
 
   const eliminarUnidad = async (id: string) => {
-    if (!confirm('Seguro que deseas eliminar esta unidad y todos sus documentos?')) return
+    if (!confirm('¿Deseas eliminar esta unidad y todos sus documentos?')) return
     await supabase.from('documentos_unidad').delete().eq('unidad_id', id)
     await supabase.from('unidades').update({ activo: false }).eq('id', id)
     await cargarDatos()
@@ -220,8 +229,7 @@ export default function DocumentosPage() {
     if (uploadError) { alert('Error al subir: ' + uploadError.message); setSubiendo(null); return }
     const nuevoDoc = { nombre: nombreDoc, url: ruta, estado: 'pendiente', fecha_emision: null, fecha_vencimiento: null, fechas_bloqueadas: false, comentario: null }
     if (docExistente) {
-      const { error } = await supabase.from(tabla).update(nuevoDoc).eq('id', docExistente.id)
-      if (error) { alert('Error: ' + error.message); setSubiendo(null); return }
+      await supabase.from(tabla).update(nuevoDoc).eq('id', docExistente.id)
       if (tabla === 'documentos') setDocumentos(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
       else if (tabla === 'documentos_conductor') setDocsConductor(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
       else if (tabla === 'documentos_unidad') setDocsUnidad(prev => prev.map(d => d.id === docExistente.id ? { ...d, ...nuevoDoc } : d))
@@ -230,8 +238,7 @@ export default function DocumentosPage() {
       const insertData: any = { ...nuevoDoc }
       insertData[campoId] = valorId
       if (tabla === 'documentos') insertData.tipo = 'empresa'
-      const { data: inserted, error } = await supabase.from(tabla).insert(insertData).select().single()
-      if (error) { alert('Error al guardar: ' + error.message); setSubiendo(null); return }
+      const { data: inserted } = await supabase.from(tabla).insert(insertData).select().single()
       if (tabla === 'documentos') setDocumentos(prev => [...prev, inserted])
       else if (tabla === 'documentos_conductor') setDocsConductor(prev => [...prev, inserted])
       else if (tabla === 'documentos_unidad') setDocsUnidad(prev => [...prev, inserted])
@@ -272,7 +279,7 @@ export default function DocumentosPage() {
     const getBadge = () => {
       if (!estado) return null
       const badges: { [key: string]: { bg: string, color: string, texto: string } } = {
-        pendiente: { bg: '#FFF7ED', color: '#C2410C', texto: 'En revision' },
+        pendiente: { bg: '#FFF7ED', color: '#C2410C', texto: 'En revisión' },
         aprobado: { bg: '#F0FDF4', color: '#15803D', texto: 'Aprobado' },
         rechazado: { bg: '#FEF2F2', color: '#C41230', texto: 'Rechazado' },
       }
@@ -285,7 +292,7 @@ export default function DocumentosPage() {
       <div style={{ padding: '12px 0', borderBottom: '1px solid #F5F5F5' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' as const }}>
               <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>{label}</span>
               {tieneVencimiento && !estado && (
                 <span style={{ fontSize: '11px', background: '#F5F5F5', color: '#888', padding: '2px 8px', borderRadius: '20px' }}>Con vencimiento</span>
@@ -297,7 +304,7 @@ export default function DocumentosPage() {
               )}
               {estado === 'aprobado' && dias !== null && dias <= 30 && (
                 <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: dias <= 5 ? '#FEF2F2' : '#FFF7ED', color: dias <= 5 ? '#C41230' : '#C2410C' }}>
-                  {dias <= 0 ? 'Vencido' : `Vence en ${dias} dias`}
+                  {dias <= 0 ? 'Vencido' : `Vence en ${dias} días`}
                 </span>
               )}
             </div>
@@ -308,7 +315,7 @@ export default function DocumentosPage() {
             )}
             {doc?.fecha_emision && (
               <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                Emision: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
+                Emisión: {new Date(doc.fecha_emision).toLocaleDateString('es-PE')}
                 {doc.fecha_vencimiento && ` · Vence: ${new Date(doc.fecha_vencimiento).toLocaleDateString('es-PE')}`}
               </p>
             )}
@@ -316,7 +323,7 @@ export default function DocumentosPage() {
               <p style={{ fontSize: '11px', color: '#C41230', marginTop: '4px' }}>Motivo: {doc.comentario}</p>
             )}
             {estado === 'aprobado' && !puede && (
-              <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Podras renovar cuando falten 5 dias o menos para el vencimiento</p>
+              <p style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Podrás renovar cuando falten 5 días o menos para el vencimiento</p>
             )}
           </div>
           <div style={{ flexShrink: 0 }}>
@@ -338,6 +345,24 @@ export default function DocumentosPage() {
     )
   }
 
+  const navBar = (
+    <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
+        <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
+        <a href="/dashboard" style={{ fontSize: '13px', color: '#888', textDecoration: 'none' }}>Inicio</a>
+        <span style={{ color: '#DDD' }}>›</span>
+        <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Mis documentos</span>
+      </div>
+      {proveedor && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Notificaciones proveedorId={proveedor?.id} />
+          <span style={{ fontSize: '13px', color: '#888' }}>{proveedor?.razon_social}</span>
+        </div>
+      )}
+    </nav>
+  )
+
   if (loading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F7F7' }}>
       <p style={{ color: '#888', fontSize: '14px' }}>Cargando...</p>
@@ -346,17 +371,9 @@ export default function DocumentosPage() {
 
   if (docsRequeridos.length === 0) return (
     <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
-      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
-          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
-          <a href="/dashboard" style={{ fontSize: '13px', color: '#888', textDecoration: 'none' }}>Dashboard</a>
-          <span style={{ color: '#DDD' }}>›</span>
-          <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Mis documentos</span>
-        </div>
-      </nav>
+      {navBar}
       <div style={{ height: '3px', background: '#C41230' }} />
-      <div style={{ maxWidth: '780px', margin: '0 auto', padding: '60px 24px', textAlign: 'center' }}>
+      <div style={{ maxWidth: '780px', margin: '0 auto', padding: '60px 24px', textAlign: 'center' as const }}>
         <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '40px' }}>
           <p style={{ fontSize: '16px', fontWeight: 600, color: '#1a1a1a', marginBottom: '8px' }}>Primero selecciona tu tipo de proveedor</p>
           <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>Para ver los documentos requeridos, primero debes indicar el tipo de servicios que brinda tu empresa.</p>
@@ -370,29 +387,18 @@ export default function DocumentosPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
-      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
-          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
-          <a href="/dashboard" style={{ fontSize: '13px', color: '#888', textDecoration: 'none' }}>Dashboard</a>
-          <span style={{ color: '#DDD' }}>›</span>
-          <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Mis documentos</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Notificaciones proveedorId={proveedor?.id} />
-          <span style={{ fontSize: '13px', color: '#888' }}>{proveedor?.razon_social}</span>
-        </div>
-      </nav>
+      {navBar}
       <div style={{ height: '3px', background: '#C41230' }} />
 
       <div style={{ maxWidth: '780px', margin: '0 auto', padding: '28px 24px' }}>
 
+        {/* Documentos informativos */}
         <div style={{ background: '#E6F1FB', borderRadius: '12px', padding: '16px 20px', border: '1px solid #B5D4F4', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
             <span style={{ fontSize: '16px' }}>ℹ️</span>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#0C447C' }}>Documentos informativos — Leer antes de comenzar</span>
           </div>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' as const }}>
             {DOCS_INFORMATIVOS.map(doc => (
               <a key={doc.nombre} href={doc.archivo} download
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'white', border: '1px solid #B5D4F4', borderRadius: '8px', padding: '8px 14px', textDecoration: 'none', color: '#0C447C', fontSize: '12px', fontWeight: 600 }}>
@@ -403,9 +409,10 @@ export default function DocumentosPage() {
           </div>
         </div>
 
+        {/* Progreso */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Progreso de carga documental</span>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Progreso de documentación</span>
             <span style={{ fontSize: '13px', fontWeight: 700, color: '#C41230' }}>{docsSubidos} / {totalDocs} documentos</span>
           </div>
           <div style={{ height: '8px', background: '#F0F0F0', borderRadius: '4px', overflow: 'hidden' }}>
@@ -414,12 +421,13 @@ export default function DocumentosPage() {
           <p style={{ fontSize: '11px', color: '#888', marginTop: '6px' }}>{progreso}% completado</p>
         </div>
 
+        {/* Documentos de la empresa */}
         <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🏢</div>
             <div>
               <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Documentos de la empresa</h2>
-              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{documentos.length} de {docsEmpresa.length} cargados · Los formatos con ↓ deben descargarse, llenarse y subirse firmados</p>
+              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{documentos.length} de {docsEmpresa.length} cargados · Los formatos con ↓ deben descargarse, completarse y subirse firmados</p>
             </div>
           </div>
           {docsEmpresa.map(doc => {
@@ -433,13 +441,14 @@ export default function DocumentosPage() {
           })}
         </div>
 
+        {/* Conductores */}
         {necesitaConductores && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
               <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>👤</div>
               <div>
                 <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Conductores</h2>
-                <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{conductores.length} registrados</p>
+                <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{conductores.length} registrado{conductores.length !== 1 ? 's' : ''}</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
@@ -454,7 +463,7 @@ export default function DocumentosPage() {
             </div>
             {conductores.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px', background: '#F9F9F9', borderRadius: '8px' }}>
-                <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>No hay conductores registrados aun</p>
+                <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>No hay conductores registrados aún</p>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -488,28 +497,36 @@ export default function DocumentosPage() {
           </div>
         )}
 
+        {/* Unidades */}
         {necesitaUnidades && (
           <div style={{ background: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #EEEEEE' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
               <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🚛</div>
               <div>
                 <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Unidades vehiculares</h2>
-                <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{unidades.length} registradas</p>
+                <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>{unidades.length} registrada{unidades.length !== 1 ? 's' : ''}</p>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-              <input type="text" value={nuevaUnidad} onChange={(e) => setNuevaUnidad(e.target.value)}
-                placeholder="Placa del vehiculo (ej: ABC-123)"
+
+            {/* Formulario con placa y tipo */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', marginBottom: '14px' }}>
+              <input type="text" value={nuevaPlaca} onChange={(e) => setNuevaPlaca(e.target.value)}
+                placeholder="Placa (ej: ABC-123)"
                 onKeyDown={(e) => e.key === 'Enter' && agregarUnidad()}
-                style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+                style={{ padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none' }} />
+              <select value={nuevoTipoUnidad} onChange={(e) => setNuevoTipoUnidad(e.target.value)}
+                style={{ padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', color: '#1a1a1a' }}>
+                {TIPOS_UNIDAD.map(t => <option key={t}>{t}</option>)}
+              </select>
               <button onClick={agregarUnidad} disabled={agregandoUnidad}
-                style={{ padding: '9px 18px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: agregandoUnidad ? 0.7 : 1 }}>
+                style={{ padding: '9px 18px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: agregandoUnidad ? 0.7 : 1, whiteSpace: 'nowrap' as const }}>
                 {agregandoUnidad ? '...' : '+ Agregar'}
               </button>
             </div>
+
             {unidades.length === 0 && (
               <div style={{ textAlign: 'center', padding: '20px', background: '#F9F9F9', borderRadius: '8px' }}>
-                <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>No hay unidades registradas aun</p>
+                <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>No hay unidades registradas aún</p>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -517,10 +534,17 @@ export default function DocumentosPage() {
                 <div key={unidad.id} style={{ border: '1px solid #F0F0F0', borderRadius: '10px', padding: '14px', background: '#FAFAFA' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#4A4A4A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px' }}>
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '13px' }}>
                         🚛
                       </div>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Placa: {unidad.placa}</span>
+                      <div>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>Placa: {unidad.placa}</span>
+                        {unidad.tipo && (
+                          <span style={{ fontSize: '11px', color: '#888', marginLeft: '8px', background: '#F5F5F5', padding: '2px 8px', borderRadius: '20px' }}>
+                            {unidad.tipo}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <button onClick={() => eliminarUnidad(unidad.id)}
                       style={{ fontSize: '11px', color: '#C41230', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>
@@ -542,7 +566,6 @@ export default function DocumentosPage() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   )

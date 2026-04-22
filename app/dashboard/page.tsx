@@ -14,11 +14,11 @@ export default function DashboardPage() {
   useEffect(() => { cargarDatos() }, [])
 
   const cargarDatos = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
 
     const { data } = await supabase
-      .from('proveedores').select('*').eq('user_id', user.id).single()
+      .from('proveedores').select('*').eq('user_id', session.user.id).single()
     setProveedor(data)
 
     const { data: docs } = await supabase
@@ -55,19 +55,18 @@ export default function DashboardPage() {
 
   const estadoActual = estadoColor[proveedor?.estado] || estadoColor.pendiente
 
+  const perfilCompleto = !!(proveedor?.tipo_servicio?.length > 0 || proveedor?.tipo_id)
+  const docsSubidos = documentos.length > 0
+
   return (
     <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
 
       {/* Navbar */}
-      <nav style={{
-        background: 'white', borderBottom: '1px solid #EEEEEE',
-        padding: '0 28px', height: '56px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-      }}>
+      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
           <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
-          <span style={{ fontSize: '13px', color: '#888' }}>Portal de proveedor</span>
+          <span style={{ fontSize: '13px', color: '#888' }}>Portal del proveedor</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Notificaciones proveedorId={proveedor?.id} />
@@ -76,17 +75,11 @@ export default function DashboardPage() {
             <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>RUC {proveedor?.ruc}</p>
           </div>
           <button onClick={handleLogout}
-            style={{
-              fontSize: '13px', color: '#888', background: 'none',
-              border: 'none', cursor: 'pointer', padding: '6px 12px',
-              borderRadius: '6px', transition: 'all 0.2s'
-            }}>
+            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px' }}>
             Salir
           </button>
         </div>
       </nav>
-
-      {/* Barra roja superior */}
       <div style={{ height: '3px', background: '#C41230' }} />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '32px 24px' }}>
@@ -102,18 +95,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Estado actual */}
-        <div style={{
-          background: 'white', borderRadius: '12px', padding: '24px',
-          border: '1px solid #EEEEEE', marginBottom: '20px'
-        }}>
+        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #EEEEEE', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
             <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>
               Estado del proceso
             </h2>
-            <span style={{
-              fontSize: '12px', fontWeight: 600, padding: '4px 12px',
-              borderRadius: '20px', background: estadoActual.bg, color: estadoActual.text
-            }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '20px', background: estadoActual.bg, color: estadoActual.text }}>
               {proveedor?.estado === 'pendiente' ? 'Pendiente de revisión' :
                proveedor?.estado === 'homologado' ? 'Homologado' :
                proveedor?.estado === 'rechazado' ? 'Rechazado' :
@@ -126,27 +113,19 @@ export default function DashboardPage() {
             {pasos.map((paso, i) => (
               <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                 {i < pasos.length - 1 && (
-                  <div style={{
-                    position: 'absolute', top: '14px', left: '50%', width: '100%',
-                    height: '2px', background: i < pasoActual ? '#C41230' : '#E5E5E5',
-                    zIndex: 0
-                  }} />
+                  <div style={{ position: 'absolute', top: '14px', left: '50%', width: '100%', height: '2px', background: i < pasoActual ? '#C41230' : '#E5E5E5', zIndex: 0 }} />
                 )}
                 <div style={{
                   width: '28px', height: '28px', borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '11px', fontWeight: 600, zIndex: 1, position: 'relative',
-                  background: i < pasoActual ? '#C41230' : i === pasoActual ? 'white' : 'white',
+                  background: i < pasoActual ? '#C41230' : 'white',
                   color: i < pasoActual ? 'white' : i === pasoActual ? '#C41230' : '#CCC',
                   border: i === pasoActual ? '2px solid #C41230' : i < pasoActual ? 'none' : '2px solid #E5E5E5',
                 }}>
                   {i < pasoActual ? '✓' : i + 1}
                 </div>
-                <span style={{
-                  fontSize: '11px', marginTop: '8px', textAlign: 'center',
-                  color: i <= pasoActual ? '#1a1a1a' : '#AAA',
-                  fontWeight: i === pasoActual ? 600 : 400
-                }}>
+                <span style={{ fontSize: '11px', marginTop: '8px', textAlign: 'center', color: i <= pasoActual ? '#1a1a1a' : '#AAA', fontWeight: i === pasoActual ? 600 : 400 }}>
                   {paso}
                 </span>
               </div>
@@ -154,40 +133,33 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Cards de acción */}
+        {/* Cards — orden: Mi perfil, Mis documentos, Mi score */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '20px' }}>
           {[
             {
-              titulo: 'Mis documentos',
-              desc: 'Carga y gestiona los documentos requeridos para tu homologación',
-              link: '/dashboard/documentos',
-              linkText: 'Ir a documentos →',
-              icon: '📄'
-            },
-            {
               titulo: 'Mi perfil',
-              desc: 'Completa y actualiza los datos de tu empresa',
+              desc: 'Completa y actualiza los datos de tu empresa, tipo de servicios y alcance de operación.',
               link: '/dashboard/perfil',
               linkText: 'Ver perfil →',
-              icon: '🏢'
+              icon: '🏢',
+            },
+            {
+              titulo: 'Mis documentos',
+              desc: 'Carga y gestiona los documentos requeridos para completar tu homologación.',
+              link: '/dashboard/documentos',
+              linkText: 'Ir a documentos →',
+              icon: '📄',
             },
             {
               titulo: 'Mi score',
-              desc: 'Revisa tu puntaje y estado de homologación',
+              desc: 'Revisa tu puntaje de desempeño y estado de homologación.',
               link: null,
-              linkText: 'Disponible tras revisión',
-              icon: '📊'
+              linkText: 'Disponible tras la revisión',
+              icon: '📊',
             },
           ].map((card) => (
-            <div key={card.titulo} style={{
-              background: 'white', borderRadius: '12px', padding: '20px',
-              border: '1px solid #EEEEEE', display: 'flex', flexDirection: 'column'
-            }}>
-              <div style={{
-                width: '40px', height: '40px', borderRadius: '10px',
-                background: '#FEF2F2', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontSize: '18px', marginBottom: '12px'
-              }}>
+            <div key={card.titulo} style={{ background: 'white', borderRadius: '12px', padding: '20px', border: '1px solid #EEEEEE', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', marginBottom: '12px' }}>
                 {card.icon}
               </div>
               <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', marginBottom: '6px' }}>
@@ -207,19 +179,16 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Próximos pasos */}
-        <div style={{
-          background: '#FEF2F2', borderRadius: '12px', padding: '20px',
-          border: '1px solid #FECACA'
-        }}>
+        {/* Próximos pasos — sin tachado, solo checks */}
+        <div style={{ background: '#FEF2F2', borderRadius: '12px', padding: '20px', border: '1px solid #FECACA' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#C41230', marginBottom: '14px' }}>
             Próximos pasos
           </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {[
-              { num: 1, texto: 'Completa los datos de tu empresa en Mi perfil', done: true },
-              { num: 2, texto: 'Carga todos los documentos requeridos', done: documentos.length > 0 },
-              { num: 3, texto: 'Espera la revisión y aprobación del evaluador', done: false },
+              { num: 1, texto: 'Completa los datos de tu empresa en Mi perfil', done: perfilCompleto },
+              { num: 2, texto: 'Carga todos los documentos requeridos', done: docsSubidos },
+              { num: 3, texto: 'Espera la revisión y aprobación del evaluador', done: proveedor?.estado === 'homologado' || proveedor?.estado === 'aprobado' },
             ].map((paso) => (
               <div key={paso.num} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
@@ -228,15 +197,11 @@ export default function DashboardPage() {
                   fontSize: '11px', fontWeight: 600,
                   background: paso.done ? '#C41230' : 'white',
                   color: paso.done ? 'white' : '#C41230',
-                  border: paso.done ? 'none' : '2px solid #C41230'
+                  border: paso.done ? 'none' : '2px solid #C41230',
                 }}>
                   {paso.done ? '✓' : paso.num}
                 </div>
-                <span style={{
-                  fontSize: '13px',
-                  color: paso.done ? '#888' : '#1a1a1a',
-                  textDecoration: paso.done ? 'line-through' : 'none'
-                }}>
+                <span style={{ fontSize: '13px', color: '#1a1a1a' }}>
                   {paso.texto}
                 </span>
               </div>

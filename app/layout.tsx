@@ -4,9 +4,12 @@ import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata: Metadata = {
-  title: 'Plataforma de Homologación',
-  description: 'Sistema de homologación de proveedores',
+export const metadata = {
+  title: 'Omni Portal',
+  description: 'Ecosistema digital de Omni Logistics',
+  icons: {
+    icon: '/favicon.png',
+  },
 }
 
 export default function RootLayout({
