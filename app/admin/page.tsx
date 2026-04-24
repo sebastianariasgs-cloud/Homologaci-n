@@ -62,15 +62,15 @@ export default function AdminPage() {
 
     setStats({
       proveedores_total: provs?.length || 0,
-      proveedores_homologados: provs?.filter(p => p.estado === 'homologado').length || 0,
-      proveedores_pendientes: provs?.filter(p => p.estado === 'pendiente').length || 0,
+      proveedores_homologados: provs?.filter((p: any) => p.estado === 'homologado').length || 0,
+      proveedores_pendientes: provs?.filter((p: any) => p.estado === 'pendiente').length || 0,
       cotizaciones_mes: cots?.length || 0,
-      cotizaciones_aceptadas: cots?.filter(c => c.estado === 'aceptada').length || 0,
-      cotizaciones_valor: cots?.reduce((acc, c) => acc + (c.total_final || 0), 0) || 0,
+      cotizaciones_aceptadas: cots?.filter((c: any) => c.estado === 'aceptada').length || 0,
+      cotizaciones_valor: cots?.reduce((acc: number, c: any) => acc + (c.total_final || 0), 0) || 0,
       solicitudes_total: sols?.length || 0,
-      solicitudes_pendientes: sols?.filter(s => s.estado === 'pendiente').length || 0,
-      solicitudes_en_transito: sols?.filter(s => s.estado === 'en_transito').length || 0,
-      solicitudes_entregadas: sols?.filter(s => s.estado === 'entregada').length || 0,
+      solicitudes_pendientes: sols?.filter((s: any) => s.estado === 'pendiente').length || 0,
+      solicitudes_en_transito: sols?.filter((s: any) => s.estado === 'en_transito').length || 0,
+      solicitudes_entregadas: sols?.filter((s: any) => s.estado === 'entregada').length || 0,
       documentos_por_vencer: docsVencer?.length || 0,
       usuarios_activos: perfiles?.length || 0,
     })
@@ -118,11 +118,11 @@ export default function AdminPage() {
             { href: '/evaluador', icon: '🏢', label: 'Homologación' },
             { href: '/comercial', icon: '📋', label: 'Cotizaciones' },
             { href: '/transporte', icon: '🚛', label: 'Transporte' },
-          ].map(item => (
+          ].map((item: any) => (
             <a key={item.href} href={item.href}
               style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', marginBottom: '2px', textDecoration: 'none', color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLAnchorElement).style.color = 'white' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'; (e.currentTarget as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.6)' }}>
+              onMouseEnter={(e: any) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = 'white' }}
+              onMouseLeave={(e: any) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}>
               <span style={{ fontSize: '15px' }}>{item.icon}</span>
               {item.label}
             </a>
@@ -177,7 +177,7 @@ export default function AdminPage() {
             { label: 'Cotizaciones', valor: stats.cotizaciones_mes, sub: `${stats.cotizaciones_aceptadas} aceptadas`, icon: '📋', accent: '#2E7D32', pct: stats.cotizaciones_mes > 0 ? Math.round((stats.cotizaciones_aceptadas / stats.cotizaciones_mes) * 100) : 0 },
             { label: 'Transporte', valor: stats.solicitudes_total, sub: `${stats.solicitudes_en_transito} en tránsito`, icon: '🚛', accent: '#E65100', pct: stats.solicitudes_total > 0 ? Math.round((stats.solicitudes_entregadas / stats.solicitudes_total) * 100) : 0 },
             { label: 'Usuarios', valor: stats.usuarios_activos, sub: 'en plataforma', icon: '👥', accent: '#6A1B9A', pct: null },
-          ].map(kpi => (
+          ].map((kpi: any) => (
             <div key={kpi.label} style={{ background: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${kpi.accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
@@ -224,7 +224,7 @@ export default function AdminPage() {
             { id: 'proveedores', label: 'Proveedores' },
             { id: 'cotizaciones', label: 'Cotizaciones' },
             { id: 'transporte', label: 'Transporte' },
-          ].map(tab => (
+          ].map((tab: any) => (
             <button key={tab.id} onClick={() => setPestana(tab.id as any)}
               style={{ padding: '7px 18px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: 'none', background: pestana === tab.id ? '#0F1923' : 'transparent', color: pestana === tab.id ? 'white' : '#8A9BB0' }}>
               {tab.label}
@@ -242,7 +242,7 @@ export default function AdminPage() {
                 render: (c: any) => ({ main: c.numero, sub: c.clientes?.razon_social || '—', estado: c.estado, extra: `${c.moneda} ${c.total_final?.toFixed(0)}` }) },
               { title: 'Solicitudes de transporte', link: '/transporte', items: solicitudesRecientes, empty: 'Sin solicitudes aún',
                 render: (s: any) => ({ main: s.numero, sub: new Date(s.fecha_recojo).toLocaleDateString('es-PE'), estado: s.estado }) },
-            ].map(col => (
+            ].map((col: any) => (
               <div key={col.title} style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>{col.title}</p>
@@ -250,7 +250,7 @@ export default function AdminPage() {
                 </div>
                 {col.items.length === 0 ? (
                   <p style={{ fontSize: '12px', color: '#BCC6D0', textAlign: 'center', padding: '28px', margin: 0 }}>{col.empty}</p>
-                ) : col.items.map((item, i) => {
+                ) : col.items.map((item: any, i: any) => {
                   const r = col.render(item)
                   const b = badge(r.estado)
                   return (
@@ -261,7 +261,7 @@ export default function AdminPage() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <span style={{ fontSize: '9px', fontWeight: 700, padding: '3px 8px', borderRadius: '20px', background: b.bg, color: b.color, display: 'inline-block' }}>{b.label}</span>
-                        {(r as any).extra && <p style={{ fontSize: '11px', fontWeight: 700, color: '#0F1923', margin: '3px 0 0' }}>{(r as any).extra}</p>}
+                        {r.extra && <p style={{ fontSize: '11px', fontWeight: 700, color: '#0F1923', margin: '3px 0 0' }}>{r.extra}</p>}
                       </div>
                     </div>
                   )
@@ -283,14 +283,14 @@ export default function AdminPage() {
                 { label: 'Total', valor: stats.proveedores_total, color: '#0F1923', bg: '#F8F9FA' },
                 { label: 'Homologados', valor: stats.proveedores_homologados, color: '#2E7D32', bg: '#E8F5E9' },
                 { label: 'Pendientes', valor: stats.proveedores_pendientes, color: '#E65100', bg: '#FFF3E0' },
-              ].map(item => (
+              ].map((item: any) => (
                 <div key={item.label} style={{ background: item.bg, padding: '18px 24px', textAlign: 'center', borderRight: '1px solid #F0F2F5' }}>
                   <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</p>
                   <p style={{ fontSize: '32px', fontWeight: 800, color: item.color, margin: 0 }}>{item.valor}</p>
                 </div>
               ))}
             </div>
-            {proveedoresRecientes.map((p, i) => {
+            {proveedoresRecientes.map((p: any, i: any) => {
               const b = badge(p.estado)
               return (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid #F5F7FA', background: i % 2 === 0 ? 'white' : '#FAFBFC' }}>
@@ -317,14 +317,14 @@ export default function AdminPage() {
                 { label: 'Total mes', valor: stats.cotizaciones_mes, color: '#0F1923', bg: '#F8F9FA' },
                 { label: 'Aceptadas', valor: stats.cotizaciones_aceptadas, color: '#2E7D32', bg: '#E8F5E9' },
                 { label: 'Valor total', valor: `USD ${stats.cotizaciones_valor.toLocaleString('es-PE', { minimumFractionDigits: 0 })}`, color: '#C41230', bg: '#FFEBEE' },
-              ].map(item => (
+              ].map((item: any) => (
                 <div key={item.label} style={{ background: item.bg, padding: '18px 24px', textAlign: 'center', borderRight: '1px solid #F0F2F5' }}>
                   <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</p>
                   <p style={{ fontSize: '28px', fontWeight: 800, color: item.color, margin: 0 }}>{item.valor}</p>
                 </div>
               ))}
             </div>
-            {cotizacionesRecientes.map((c, i) => {
+            {cotizacionesRecientes.map((c: any, i: any) => {
               const b = badge(c.estado)
               return (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid #F5F7FA', background: i % 2 === 0 ? 'white' : '#FAFBFC' }}>
@@ -355,14 +355,14 @@ export default function AdminPage() {
                 { label: 'Pendientes', valor: stats.solicitudes_pendientes, color: '#E65100', bg: '#FFF3E0' },
                 { label: 'En tránsito', valor: stats.solicitudes_en_transito, color: '#1565C0', bg: '#E3F2FD' },
                 { label: 'Entregadas', valor: stats.solicitudes_entregadas, color: '#2E7D32', bg: '#E8F5E9' },
-              ].map(item => (
+              ].map((item: any) => (
                 <div key={item.label} style={{ background: item.bg, padding: '18px 24px', textAlign: 'center', borderRight: '1px solid #F0F2F5' }}>
                   <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{item.label}</p>
                   <p style={{ fontSize: '32px', fontWeight: 800, color: item.color, margin: 0 }}>{item.valor}</p>
                 </div>
               ))}
             </div>
-            {solicitudesRecientes.map((s, i) => {
+            {solicitudesRecientes.map((s: any, i: any) => {
               const b = badge(s.estado)
               return (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid #F5F7FA', background: i % 2 === 0 ? 'white' : '#FAFBFC' }}>

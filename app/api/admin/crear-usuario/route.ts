@@ -7,7 +7,7 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: NextRequest) {
-  const { email, password, nombre, rol } = await req.json()
+  const { email, password, razon_social, ruc, rol } = await req.json()
 
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -21,7 +21,13 @@ export async function POST(req: NextRequest) {
 
   const { error: perfilError } = await supabaseAdmin
     .from('perfiles')
-    .insert({ id: authData.user.id, email, nombre, rol })
+    .insert({
+      id: authData.user.id,
+      email,
+      nombre: razon_social,
+      ruc,
+      rol
+    })
 
   if (perfilError) {
     return NextResponse.json({ error: perfilError.message }, { status: 400 })
