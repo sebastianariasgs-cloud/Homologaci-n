@@ -117,14 +117,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div style={{ marginTop: '16px', textAlign: 'center' }}>
-              <p style={{ fontSize: '13px', color: '#888' }}>
-                ¿Eres proveedor nuevo?{' '}
-                <a href="/registro" style={{ color: '#C41230', fontWeight: 600, textDecoration: 'none' }}>
-                  Registrate aqui
-                </a>
-              </p>
-            </div>
+            
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '24px' }}>
