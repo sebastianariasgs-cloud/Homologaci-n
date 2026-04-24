@@ -16,11 +16,11 @@ export default function ComercialPage() {
   useEffect(() => { verificarRol() }, [])
 
   const verificarRol = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { router.push('/login'); return }
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
     const { data: perfil } = await supabase
-      .from('perfiles').select('rol').eq('id', user.id).single()
-    if (!['comercial', 'admin'].includes(perfil?.rol)) { router.push('/login'); return }
+      .from('perfiles').select('rol').eq('id', session.user.id).single()
+    if (!['comercial', 'admin'].includes(perfil?.rol)) { router.push('/dashboard'); return }
     await cargarCotizaciones()
   }
 
@@ -29,19 +29,18 @@ export default function ComercialPage() {
       .from('cotizaciones')
       .select('*, clientes(razon_social, ruc)')
       .order('created_at', { ascending: false })
-
     const cots = data || []
     setCotizaciones(cots)
     setStats({
       total: cots.length,
-      pendientes: cots.filter(c => c.estado === 'pendiente').length,
-      enviadas: cots.filter(c => c.estado === 'enviada').length,
-      aceptadas: cots.filter(c => c.estado === 'aceptada').length,
+      pendientes: cots.filter((c: any) => c.estado === 'pendiente').length,
+      enviadas: cots.filter((c: any) => c.estado === 'enviada').length,
+      aceptadas: cots.filter((c: any) => c.estado === 'aceptada').length,
     })
     setLoading(false)
   }
 
-  const cotizacionesFiltradas = cotizaciones.filter(c => {
+  const cotizacionesFiltradas = cotizaciones.filter((c: any) => {
     const matchEstado = filtroEstado === 'todos' || c.estado === filtroEstado
     const matchBusqueda = busqueda === '' ||
       c.numero?.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -50,117 +49,116 @@ export default function ComercialPage() {
   })
 
   const estadoBadge: { [key: string]: { bg: string, color: string, texto: string } } = {
-    borrador: { bg: '#F5F5F5', color: '#666', texto: 'Borrador' },
-    pendiente: { bg: '#FFF7ED', color: '#C2410C', texto: 'Pendiente de envio' },
-    enviada: { bg: '#EFF6FF', color: '#1D4ED8', texto: 'Enviada' },
-    aceptada: { bg: '#F0FDF4', color: '#15803D', texto: 'Aceptada' },
-    rechazada: { bg: '#FEF2F2', color: '#C41230', texto: 'Rechazada' },
+    borrador:  { bg: '#F5F5F5', color: '#616161', texto: 'Borrador' },
+    pendiente: { bg: '#FFF3E0', color: '#E65100', texto: 'Pendiente de envío' },
+    enviada:   { bg: '#E3F2FD', color: '#1565C0', texto: 'Enviada' },
+    aceptada:  { bg: '#E8F5E9', color: '#2E7D32', texto: 'Aceptada' },
+    rechazada: { bg: '#FFEBEE', color: '#B71C1C', texto: 'Rechazada' },
   }
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F7F7' }}>
-      <p style={{ color: '#888', fontSize: '14px' }}>Cargando...</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F5', fontFamily: "'Segoe UI', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid #EEEEEE', borderTopColor: '#C41230', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>Cargando...</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
-      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
-          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
-          <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Modulo de cotizaciones</span>
+    <div style={{ minHeight: '100vh', background: '#F0F2F5', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+      <nav style={{ background: '#0F1923', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '28px', filter: 'brightness(0) invert(1)' }} />
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)' }} />
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Módulo de cotizaciones</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BotonAdmin />
           <button onClick={() => router.push('/comercial/nueva')}
             style={{ background: '#C41230', color: 'white', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-            + Nueva cotizacion
+            + Nueva cotización
           </button>
-          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <BotonAdmin />
+          <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
+            style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Salir
           </button>
         </div>
       </nav>
       <div style={{ height: '3px', background: '#C41230' }} />
 
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '28px 24px' }}>
-
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+      <div style={{ maxWidth: '1060px', margin: '0 auto', padding: '28px 24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '20px' }}>
           {[
-            { label: 'Total cotizaciones', valor: stats.total, bg: '#F7F7F7', color: '#1a1a1a', border: '#EEEEEE' },
-            { label: 'Pendientes de envio', valor: stats.pendientes, bg: '#FFF7ED', color: '#C2410C', border: '#FED7AA' },
-            { label: 'Enviadas', valor: stats.enviadas, bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
-            { label: 'Aceptadas', valor: stats.aceptadas, bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0' },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ background: kpi.bg, borderRadius: '12px', padding: '16px', border: `1px solid ${kpi.border}` }}>
-              <p style={{ fontSize: '11px', color: '#888', margin: '0 0 8px' }}>{kpi.label}</p>
-              <p style={{ fontSize: '28px', fontWeight: 700, color: kpi.color, margin: 0, lineHeight: 1 }}>{kpi.valor}</p>
+            { label: 'Total cotizaciones', valor: stats.total, bg: 'white', color: '#0F1923', border: '#E8ECF0', icon: '📋' },
+            { label: 'Pendientes de envío', valor: stats.pendientes, bg: '#FFF3E0', color: '#E65100', border: '#FFCC80', icon: '⏳' },
+            { label: 'Enviadas', valor: stats.enviadas, bg: '#E3F2FD', color: '#1565C0', border: '#90CAF9', icon: '📤' },
+            { label: 'Aceptadas', valor: stats.aceptadas, bg: '#E8F5E9', color: '#2E7D32', border: '#A5D6A7', icon: '✅' },
+          ].map((kpi: any) => (
+            <div key={kpi.label} style={{ background: kpi.bg, borderRadius: '14px', padding: '18px 20px', border: `1px solid ${kpi.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <span style={{ fontSize: '20px' }}>{kpi.icon}</span>
+              <p style={{ fontSize: '30px', fontWeight: 800, color: kpi.color, margin: '8px 0 4px', lineHeight: 1 }}>{kpi.valor}</p>
+              <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>{kpi.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Filtros */}
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '14px 20px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <input type="text" placeholder="Buscar por numero o cliente..."
-            value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
-            style={{ flex: 1, minWidth: '200px', padding: '7px 12px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '12px', outline: 'none' }} />
+        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E8ECF0', padding: '14px 20px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <input type="text" placeholder="Buscar por número o cliente..." value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            style={{ flex: 1, minWidth: '200px', padding: '8px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#0F1923' }} />
           <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}
-            style={{ padding: '7px 12px', border: '1.5px solid #E8E8E8', borderRadius: '7px', fontSize: '12px', outline: 'none', background: 'white' }}>
+            style={{ padding: '8px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', color: '#0F1923' }}>
             <option value="todos">Todos los estados</option>
             <option value="borrador">Borrador</option>
-            <option value="pendiente">Pendiente de envio</option>
+            <option value="pendiente">Pendiente de envío</option>
             <option value="enviada">Enviada</option>
             <option value="aceptada">Aceptada</option>
             <option value="rechazada">Rechazada</option>
           </select>
-          <span style={{ fontSize: '11px', color: '#888' }}>{cotizacionesFiltradas.length} resultados</span>
+          <span style={{ fontSize: '12px', color: '#8A9BB0', fontWeight: 500 }}>{cotizacionesFiltradas.length} resultado{cotizacionesFiltradas.length !== 1 ? 's' : ''}</span>
         </div>
 
-        {/* Lista cotizaciones */}
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', overflow: 'hidden' }}>
+        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
           {cotizacionesFiltradas.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center' }}>
-              <p style={{ fontSize: '14px', color: '#888', margin: '0 0 8px' }}>No hay cotizaciones aun</p>
-              <p style={{ fontSize: '12px', color: '#BBB', margin: '0 0 20px' }}>Crea tu primera cotizacion para empezar</p>
+            <div style={{ padding: '60px', textAlign: 'center' }}>
+              <p style={{ fontSize: '32px', margin: '0 0 12px' }}>📋</p>
+              <p style={{ fontSize: '14px', color: '#8A9BB0', margin: '0 0 8px', fontWeight: 600 }}>No hay cotizaciones aún</p>
               <button onClick={() => router.push('/comercial/nueva')}
                 style={{ background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 24px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
-                + Nueva cotizacion
+                + Nueva cotización
               </button>
             </div>
-          ) : (
-            cotizacionesFiltradas.map((cot, i) => {
-              const badge = estadoBadge[cot.estado] || estadoBadge.borrador
-              return (
-                <div key={cot.id}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: i < cotizacionesFiltradas.length - 1 ? '1px solid #F5F5F5' : 'none', background: i % 2 === 0 ? 'white' : '#FAFAFA' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a' }}>{cot.numero}</span>
-                      <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>{badge.texto}</span>
-                    </div>
-                    <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>
-                      {cot.clientes?.razon_social} · {cot.tipo_servicio} · {cot.origen} → {cot.destino}
-                    </p>
-                    <p style={{ fontSize: '10px', color: '#AAA', margin: '2px 0 0' }}>
-                      {new Date(cot.created_at).toLocaleDateString('es-PE')}
-                    </p>
+          ) : cotizacionesFiltradas.map((cot: any, i: number) => {
+            const b = estadoBadge[cot.estado] || estadoBadge.borrador
+            return (
+              <div key={cot.id}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: i < cotizacionesFiltradas.length - 1 ? '1px solid #F5F7FA' : 'none', background: i % 2 === 0 ? 'white' : '#FAFBFC', cursor: 'pointer' }}
+                onMouseEnter={(e: any) => e.currentTarget.style.background = '#F5F7FA'}
+                onMouseLeave={(e: any) => e.currentTarget.style.background = i % 2 === 0 ? 'white' : '#FAFBFC'}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923' }}>{cot.numero}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: b.bg, color: b.color }}>{b.texto}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#1a1a1a' }}>
-                      {cot.moneda} {cot.total_final?.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                    </span>
-                    <button onClick={() => router.push(`/comercial/${cot.id}`)}
-                      style={{ fontSize: '11px', background: '#F5F5F5', color: '#666', border: '1px solid #E8E8E8', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer' }}>
-                      Ver
-                    </button>
-                  </div>
+                  <p style={{ fontSize: '12px', color: '#8A9BB0', margin: '0 0 2px' }}>
+                    {cot.clientes?.razon_social} · {cot.tipo_servicio} · {cot.origen} → {cot.destino}
+                  </p>
+                  <p style={{ fontSize: '11px', color: '#BCC6D0', margin: 0 }}>{new Date(cot.created_at).toLocaleDateString('es-PE')}</p>
                 </div>
-              )
-            })
-          )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#0F1923' }}>
+                    {cot.moneda} {cot.total_final?.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </span>
+                  <button onClick={() => router.push(`/comercial/${cot.id}`)}
+                    style={{ fontSize: '12px', background: '#F0F2F5', color: '#0F1923', border: '1px solid #E8ECF0', borderRadius: '8px', padding: '6px 16px', cursor: 'pointer', fontWeight: 600 }}>
+                    Ver →
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

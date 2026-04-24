@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const ROLES = [
   { value: 'proveedor', label: 'Proveedor' },
@@ -14,33 +15,187 @@ const ROLES = [
   { value: 'admin', label: 'Administrador' },
 ]
 
-export default function CrearUsuarioPage() {
+const ROLES_INTERNOS = ['evaluador', 'comercial', 'pricing', 'operativo_sli', 'admin_operativo', 'supervisor_sli', 'transporte', 'admin']
+
+const rolColors: Record<string, { bg: string, color: string }> = {
+  admin:           { bg: '#FFEBEE', color: '#B71C1C' },
+  proveedor:       { bg: '#E3F2FD', color: '#1565C0' },
+  evaluador:       { bg: '#F3E5F5', color: '#6A1B9A' },
+  comercial:       { bg: '#E8F5E9', color: '#2E7D32' },
+  pricing:         { bg: '#FFF3E0', color: '#E65100' },
+  transporte:      { bg: '#E0F7FA', color: '#00695C' },
+  operativo_sli:   { bg: '#FFF8E1', color: '#F57F17' },
+  admin_operativo: { bg: '#FCE4EC', color: '#880E4F' },
+  supervisor_sli:  { bg: '#E8EAF6', color: '#283593' },
+}
+
+export default function GestionUsuariosPage() {
+  const [vista, setVista] = useState<'lista' | 'crear'>('lista')
+  const [pestana, setPestana] = useState<'internos' | 'externos'>('internos')
+  const [usuarios, setUsuarios] = useState<any[]>([])
+  const [loadingUsuarios, setLoadingUsuarios] = useState(true)
+  const [busqueda, setBusqueda] = useState('')
   const [form, setForm] = useState({ ruc: '', razon_social: '', email: '', password: '', rol: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [exito, setExito] = useState(false)
+  const [exito, setExito] = useState('')
+  const [editandoRol, setEditandoRol] = useState<string | null>(null)
+  const [nuevoRol, setNuevoRol] = useState('')
+  const [confirmEliminar, setConfirmEliminar] = useState<string | null>(null)
+
+  const esInterno = ROLES_INTERNOS.includes(form.rol)
+
+  useEffect(() => { cargarUsuarios() }, [])
+
+  const cargarUsuarios = async () => {
+    setLoadingUsuarios(true)
+    const { data } = await supabase
+      .from('perfiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setUsuarios(data || [])
+    setLoadingUsuarios(false)
+  }
+
+  const usuariosInternos = usuarios.filter((u: any) => ROLES_INTERNOS.includes(u.rol))
+  const usuariosExternos = usuarios.filter((u: any) => u.rol === 'proveedor' || !u.rol)
+
+  const filtrar = (lista: any[]) => {
+    if (!busqueda) return lista
+    const q = busqueda.toLowerCase()
+    return lista.filter((u: any) =>
+      u.email?.toLowerCase().includes(q) ||
+      u.nombre?.toLowerCase().includes(q) ||
+      u.razon_social?.toLowerCase().includes(q) ||
+      u.ruc?.includes(q)
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setExito(false)
+    setExito('')
+
+    if (form.rol === 'proveedor' && form.ruc) {
+      const { data: existing } = await supabase
+        .from('perfiles').select('id').eq('ruc', form.ruc).single()
+      if (existing) {
+        setError('Ya existe un proveedor con ese RUC')
+        setLoading(false)
+        return
+      }
+    }
 
     const res = await fetch('/api/admin/crear-usuario', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
+      body: JSON.stringify({
+        email: form.email,
+        password: form.password,
+        razon_social: esInterno ? form.razon_social : form.razon_social,
+        ruc: esInterno ? '' : form.ruc,
+        rol: form.rol,
+      })
     })
 
     const data = await res.json()
-
     if (data.error) {
       setError(data.error)
     } else {
-      setExito(true)
+      setExito('✅ Usuario creado exitosamente')
       setForm({ ruc: '', razon_social: '', email: '', password: '', rol: '' })
+      await cargarUsuarios()
+      setTimeout(() => { setVista('lista'); setExito('') }, 1500)
     }
     setLoading(false)
+  }
+
+  const cambiarRol = async (id: string) => {
+    if (!nuevoRol) return
+    await supabase.from('perfiles').update({ rol: nuevoRol }).eq('id', id)
+    setEditandoRol(null)
+    setNuevoRol('')
+    await cargarUsuarios()
+  }
+
+  const eliminarUsuario = async (id: string) => {
+    const res = await fetch('/api/admin/eliminar-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+    const data = await res.json()
+    if (!data.error) { setConfirmEliminar(null); await cargarUsuarios() }
+  }
+
+  const rolLabel = (rol: string) => ROLES.find(r => r.value === rol)?.label || rol
+
+  const listaActual = filtrar(pestana === 'internos' ? usuariosInternos : usuariosExternos)
+
+  const FilaUsuario = ({ u, i, total }: { u: any, i: number, total: number }) => {
+    const rc = rolColors[u.rol] || { bg: '#F5F5F5', color: '#616161' }
+    const esEditando = editandoRol === u.id
+    const esEliminando = confirmEliminar === u.id
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: i < total - 1 ? '1px solid #F5F7FA' : 'none', background: i % 2 === 0 ? 'white' : '#FAFBFC', flexWrap: 'wrap' as any, gap: '12px' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' as any }}>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>
+              {u.nombre || u.razon_social || u.email || '—'}
+            </p>
+            <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: rc.bg, color: rc.color }}>
+              {rolLabel(u.rol)}
+            </span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#8A9BB0', margin: '0 0 2px' }}>{u.email || '—'}</p>
+          {u.ruc && <p style={{ fontSize: '11px', color: '#BCC6D0', margin: 0 }}>RUC {u.ruc} {u.razon_social ? `· ${u.razon_social}` : ''}</p>}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          {esEditando ? (
+            <>
+              <select value={nuevoRol} onChange={(e) => setNuevoRol(e.target.value)}
+                style={{ padding: '7px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '12px', outline: 'none', background: 'white', color: '#0F1923' }}>
+                <option value="">Selecciona rol</option>
+                {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              <button onClick={() => cambiarRol(u.id)}
+                style={{ padding: '7px 14px', background: '#0F1923', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                Guardar
+              </button>
+              <button onClick={() => { setEditandoRol(null); setNuevoRol('') }}
+                style={{ padding: '7px 14px', background: '#F0F2F5', color: '#8A9BB0', border: '1px solid #E8ECF0', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+            </>
+          ) : esEliminando ? (
+            <>
+              <span style={{ fontSize: '12px', color: '#B71C1C', fontWeight: 600 }}>¿Confirmar?</span>
+              <button onClick={() => eliminarUsuario(u.id)}
+                style={{ padding: '7px 14px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                Eliminar
+              </button>
+              <button onClick={() => setConfirmEliminar(null)}
+                style={{ padding: '7px 14px', background: '#F0F2F5', color: '#8A9BB0', border: '1px solid #E8ECF0', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => { setEditandoRol(u.id); setNuevoRol(u.rol) }}
+                style={{ padding: '7px 14px', background: '#F0F2F5', color: '#0F1923', border: '1px solid #E8ECF0', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                Cambiar rol
+              </button>
+              <button onClick={() => setConfirmEliminar(u.id)}
+                style={{ padding: '7px 14px', background: '#FFEBEE', color: '#B71C1C', border: '1px solid #EF9A9A', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                Eliminar
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -61,16 +216,14 @@ export default function CrearUsuarioPage() {
           ].map((item: any) => (
             <a key={item.href} href={item.href}
               style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', marginBottom: '2px', textDecoration: 'none', color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
-              <span style={{ fontSize: '15px' }}>{item.icon}</span>
-              {item.label}
+              <span>{item.icon}</span>{item.label}
             </a>
           ))}
           <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)', margin: '16px 0' }} />
           <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 8px 10px', fontWeight: 600 }}>Configuración</p>
           <a href="/admin/usuarios"
             style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', textDecoration: 'none', background: 'rgba(196,18,48,0.15)', color: '#FF6B6B', fontSize: '13px', border: '1px solid rgba(196,18,48,0.2)' }}>
-            <span style={{ fontSize: '15px' }}>👤</span>
-            Gestionar usuarios
+            <span>👤</span>Gestionar usuarios
           </a>
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
@@ -81,84 +234,158 @@ export default function CrearUsuarioPage() {
       </div>
 
       {/* CONTENIDO */}
-      <div style={{ marginLeft: '220px', padding: '40px' }}>
-        <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#0F1923', margin: '0 0 4px' }}>Crear nuevo usuario</h1>
-          <p style={{ fontSize: '13px', color: '#8A9BB0', margin: 0 }}>Completa los datos para registrar un nuevo usuario en el portal</p>
-        </div>
+      <div style={{ marginLeft: '220px', padding: '32px 40px' }}>
 
-        <div style={{ maxWidth: '520px' }}>
-          <div style={{ background: 'white', borderRadius: '14px', padding: '32px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-            <form onSubmit={handleSubmit}>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RUC</label>
-                <input type="text" required maxLength={11}
-                  value={form.ruc}
-                  onChange={(e) => setForm({ ...form, ruc: e.target.value })}
-                  placeholder="20xxxxxxxxx"
-                  style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', color: '#0F1923', outline: 'none' }} />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razón Social</label>
-                <input type="text" required
-                  value={form.razon_social}
-                  onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
-                  placeholder="Empresa S.A.C."
-                  style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', color: '#0F1923', outline: 'none' }} />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Correo Electrónico</label>
-                <input type="email" required
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="usuario@empresa.com"
-                  style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', color: '#0F1923', outline: 'none' }} />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contraseña Temporal</label>
-                <input type="password" required
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
-                  style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', color: '#0F1923', outline: 'none' }} />
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rol</label>
-                <select required value={form.rol}
-                  onChange={(e) => setForm({ ...form, rol: e.target.value })}
-                  style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', background: 'white', color: '#0F1923', outline: 'none' }}>
-                  <option value="">Selecciona un rol</option>
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {error && (
-                <div style={{ background: '#FFEBEE', border: '1px solid #EF9A9A', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
-                  <p style={{ color: '#B71C1C', fontSize: '13px', margin: 0 }}>❌ {error}</p>
-                </div>
-              )}
-
-              {exito && (
-                <div style={{ background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
-                  <p style={{ color: '#2E7D32', fontSize: '13px', margin: 0 }}>✅ Usuario creado exitosamente</p>
-                </div>
-              )}
-
-              <button type="submit" disabled={loading}
-                style={{ width: '100%', padding: '13px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1 }}>
-                {loading ? 'Creando usuario...' : 'Crear usuario'}
-              </button>
-
-            </form>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#0F1923', margin: '0 0 4px' }}>Gestión de usuarios</h1>
+            <p style={{ fontSize: '13px', color: '#8A9BB0', margin: 0 }}>
+              {usuariosInternos.length} internos · {usuariosExternos.length} proveedores
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => { setVista('lista'); setError(''); setExito('') }}
+              style={{ padding: '9px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: vista === 'lista' ? '#0F1923' : 'white', color: vista === 'lista' ? 'white' : '#8A9BB0', border: vista === 'lista' ? 'none' : '1px solid #E8ECF0' }}>
+              👥 Ver usuarios
+            </button>
+            <button onClick={() => { setVista('crear'); setError(''); setExito('') }}
+              style={{ padding: '9px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', background: vista === 'crear' ? '#C41230' : 'white', color: vista === 'crear' ? 'white' : '#8A9BB0', border: vista === 'crear' ? 'none' : '1px solid #E8ECF0' }}>
+              + Crear usuario
+            </button>
           </div>
         </div>
+
+        {/* LISTA */}
+        {vista === 'lista' && (
+          <div>
+            {/* Búsqueda */}
+            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E8ECF0', padding: '14px 20px', marginBottom: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <input
+                type="text"
+                placeholder="Buscar por nombre, email, razón social o RUC..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#0F1923', boxSizing: 'border-box' as any }} />
+            </div>
+
+            {/* Tabs internos / externos */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: 'white', padding: '4px', borderRadius: '10px', border: '1px solid #E8ECF0', width: 'fit-content' }}>
+              <button onClick={() => setPestana('internos')}
+                style={{ padding: '7px 20px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: 'none', background: pestana === 'internos' ? '#0F1923' : 'transparent', color: pestana === 'internos' ? 'white' : '#8A9BB0' }}>
+                🏢 Usuarios internos ({usuariosInternos.length})
+              </button>
+              <button onClick={() => setPestana('externos')}
+                style={{ padding: '7px 20px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: 'none', background: pestana === 'externos' ? '#0F1923' : 'transparent', color: pestana === 'externos' ? 'white' : '#8A9BB0' }}>
+                🚚 Proveedores ({usuariosExternos.length})
+              </button>
+            </div>
+
+            <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>
+                  {pestana === 'internos' ? 'Equipo Omni Logistics' : 'Proveedores externos'}
+                </p>
+                <span style={{ fontSize: '12px', color: '#8A9BB0' }}>{listaActual.length} resultado{listaActual.length !== 1 ? 's' : ''}</span>
+              </div>
+
+              {loadingUsuarios ? (
+                <div style={{ padding: '40px', textAlign: 'center' }}>
+                  <p style={{ color: '#8A9BB0', fontSize: '13px' }}>Cargando...</p>
+                </div>
+              ) : listaActual.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center' }}>
+                  <p style={{ fontSize: '28px', margin: '0 0 10px' }}>🔍</p>
+                  <p style={{ color: '#8A9BB0', fontSize: '13px', margin: 0 }}>
+                    {busqueda ? 'Sin resultados para tu búsqueda' : 'No hay usuarios en esta categoría'}
+                  </p>
+                </div>
+              ) : listaActual.map((u: any, i: number) => (
+                <FilaUsuario key={u.id} u={u} i={i} total={listaActual.length} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CREAR */}
+        {vista === 'crear' && (
+          <div style={{ maxWidth: '520px' }}>
+            <div style={{ background: 'white', borderRadius: '14px', padding: '32px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <form onSubmit={handleSubmit}>
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rol</label>
+                  <select required value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value, ruc: '', razon_social: '' })}
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, background: 'white', color: '#0F1923', outline: 'none' }}>
+                    <option value="">Selecciona un rol</option>
+                    {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+
+                {form.rol === 'proveedor' && (
+                  <>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RUC</label>
+                      <input type="text" required maxLength={11} value={form.ruc}
+                        onChange={(e) => setForm({ ...form, ruc: e.target.value })}
+                        placeholder="20xxxxxxxxx"
+                        style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razón Social</label>
+                      <input type="text" required value={form.razon_social}
+                        onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
+                        placeholder="Empresa S.A.C."
+                        style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                    </div>
+                  </>
+                )}
+
+                {esInterno && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nombre completo</label>
+                    <input type="text" required value={form.razon_social}
+                      onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
+                      placeholder="Ej: Juan Pérez"
+                      style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Correo Electrónico</label>
+                  <input type="email" required value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="usuario@empresa.com"
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contraseña Temporal</label>
+                  <input type="password" required value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Mínimo 6 caracteres"
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                </div>
+
+                {error && (
+                  <div style={{ background: '#FFEBEE', border: '1px solid #EF9A9A', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
+                    <p style={{ color: '#B71C1C', fontSize: '13px', margin: 0 }}>❌ {error}</p>
+                  </div>
+                )}
+                {exito && (
+                  <div style={{ background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px' }}>
+                    <p style={{ color: '#2E7D32', fontSize: '13px', margin: 0 }}>{exito}</p>
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading || !form.rol}
+                  style={{ width: '100%', padding: '13px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading || !form.rol ? 0.7 : 1 }}>
+                  {loading ? 'Creando usuario...' : 'Crear usuario'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
