@@ -28,8 +28,6 @@ const DOCS_UNIDAD = [
   'SOAT',
   'Revisión técnica',
   'Tarjeta de propiedad',
-  'Certificado de habilitación vehicular MTC',
-  'Certificado GPS',
   'Mantenimiento preventivo',
   'Póliza de seguros contra terceros',
 ]
