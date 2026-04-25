@@ -34,6 +34,15 @@ const statusColor: { [key: string]: { bg: string, color: string } } = {
   'Servicio completado':     { bg: '#E8F5E9', color: '#2E7D32' },
 }
 
+const tipoIncidenciaMap: { [key: string]: { bg: string, color: string } } = {
+  'Accidente':         { bg: '#FFEBEE', color: '#B71C1C' },
+  'Avería mecánica':   { bg: '#FFF3E0', color: '#E65100' },
+  'Retraso':           { bg: '#FFF8E1', color: '#F57F17' },
+  'Problema de acceso':{ bg: '#E8EAF6', color: '#283593' },
+  'Carga dañada':      { bg: '#FCE4EC', color: '#880E4F' },
+  'Otro':              { bg: '#F5F5F5', color: '#616161' },
+}
+
 const formatFecha = (fecha: string, conHora = false) => {
   if (!fecha) return '—'
   return new Date(fecha).toLocaleString('es-PE', {
@@ -60,6 +69,7 @@ export default function TransportePage() {
   const [seleccionada, setSeleccionada] = useState<any>(null)
   const [documentos, setDocumentos] = useState<any[]>([])
   const [historial, setHistorial] = useState<any[]>([])
+  const [incidencias, setIncidencias] = useState<any[]>([])
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [busqueda, setBusqueda] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
@@ -76,8 +86,12 @@ export default function TransportePage() {
   const [notificaciones, setNotificaciones] = useState<any[]>([])
   const [mostrarNotif, setMostrarNotif] = useState(false)
   const [userId, setUserId] = useState('')
+  const [mostrarFormIncidencia, setMostrarFormIncidencia] = useState(false)
+  const [incidenciaForm, setIncidenciaForm] = useState({ tipo: 'Otro', descripcion: '', placa: '' })
+  const [guardandoIncidencia, setGuardandoIncidencia] = useState(false)
   const canalSolicitudRef = useRef<any>(null)
   const seleccionadaRef = useRef<any>(null)
+  const statusUnidadesRef = useRef<{ [key: string]: string }>({})
   const iniciado = useRef(false)
 
   useEffect(() => {
@@ -88,6 +102,10 @@ export default function TransportePage() {
       if (canalSolicitudRef.current) supabase.removeChannel(canalSolicitudRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    statusUnidadesRef.current = statusUnidades
+  }, [statusUnidades])
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -145,14 +163,19 @@ export default function TransportePage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitud_unidad_status', filter: `solicitud_id=eq.${solicitudId}` },
         () => cargarAsignaciones(solicitudId))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'solicitudes_transporte', filter: `id=eq.${solicitudId}` },
-        (payload: any) => { setSeleccionada((prev: any) => ({ ...prev, ...payload.new })); seleccionadaRef.current = { ...seleccionadaRef.current, ...payload.new } })
+        (payload: any) => {
+          setSeleccionada((prev: any) => ({ ...prev, ...payload.new }))
+          seleccionadaRef.current = { ...seleccionadaRef.current, ...payload.new }
+        })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'solicitud_historial', filter: `solicitud_id=eq.${solicitudId}` },
         async (payload: any) => {
           try {
             const { data: email } = await supabase.rpc('get_user_email', { user_id: payload.new.usuario_id })
             const entrada = { ...payload.new, email: email || '—' }
-            setHistorial((prev: any) => prev.find((h: any) => h.id === (entrada as any).id) ? prev : [...prev, entrada])
-          } catch { setHistorial((prev: any) => [...prev, { ...payload.new, email: '—' }]) }
+            setHistorial((prev: any) => prev.find((h: any) => h.id === entrada.id) ? prev : [...prev, entrada])
+          } catch {
+            setHistorial((prev: any) => [...prev, { ...payload.new, email: '—' }])
+          }
         })
       .subscribe()
     canalSolicitudRef.current = canal
@@ -163,11 +186,14 @@ export default function TransportePage() {
     seleccionadaRef.current = sol
     setEmailOperativo('')
     setModoReasignar(false)
+    setMostrarFormIncidencia(false)
     setObservacionesTransporte(sol.observaciones_transporte || '')
     setCoordinadorTransporte(sol.coordinador_transporte || '')
     setHistorial([])
+    setIncidencias([])
     setAsignacionesDB([])
     setStatusUnidades({})
+    statusUnidadesRef.current = {}
     suscribirSolicitud(sol.id)
 
     if (!sol.visto_por_transporte) {
@@ -179,6 +205,7 @@ export default function TransportePage() {
     setDocumentos(docs || [])
     await cargarAsignaciones(sol.id)
     await cargarHistorial(sol.id)
+    await cargarIncidencias(sol.id)
 
     if (sol.operativo_id) {
       const { data: email } = await supabase.rpc('get_user_email', { user_id: sol.operativo_id })
@@ -196,11 +223,20 @@ export default function TransportePage() {
     const statusMap: { [key: string]: string } = {}
     ;(asigs || []).forEach((a: any) => { statusMap[a.id] = a.solicitud_unidad_status?.[0]?.status || 'Asignado' })
     setStatusUnidades(statusMap)
+    statusUnidadesRef.current = statusMap
 
     if (asigs && asigs.length > 0) {
       const forms = await Promise.all(asigs.map(async (a: any) => {
-        const { unidades, conductores } = a.proveedor_id ? await cargarUnidadesConductores(a.proveedor_id) : { unidades: [], conductores: [] }
-        return { proveedor_id: a.proveedor_id || '', unidad_id: a.unidad_id || '', conductor_id: a.conductor_id || '', unidades_proveedor: unidades, conductores_proveedor: conductores }
+        const { unidades, conductores } = a.proveedor_id
+          ? await cargarUnidadesConductores(a.proveedor_id)
+          : { unidades: [], conductores: [] }
+        return {
+          proveedor_id: a.proveedor_id || '',
+          unidad_id: a.unidad_id || '',
+          conductor_id: a.conductor_id || '',
+          unidades_proveedor: unidades,
+          conductores_proveedor: conductores
+        }
       }))
       setAsignacionesForm(forms)
     }
@@ -210,10 +246,38 @@ export default function TransportePage() {
     const { data: hist } = await supabase.from('solicitud_historial').select('*')
       .eq('solicitud_id', solicitudId).order('created_at', { ascending: true })
     const histConEmails = await Promise.all((hist || []).map(async (h: any) => {
-      try { const { data: email } = await supabase.rpc('get_user_email', { user_id: h.usuario_id }); return { ...h, email: email || '—' } }
-      catch { return { ...h, email: '—' } }
+      try {
+        const { data: email } = await supabase.rpc('get_user_email', { user_id: h.usuario_id })
+        return { ...h, email: email || '—' }
+      } catch { return { ...h, email: '—' } }
     }))
     setHistorial(histConEmails)
+  }
+
+  const cargarIncidencias = async (solicitudId: string) => {
+    const { data } = await supabase
+      .from('solicitud_incidencias')
+      .select('*')
+      .eq('solicitud_id', solicitudId)
+      .order('created_at', { ascending: false })
+    setIncidencias(data || [])
+  }
+
+  const guardarIncidencia = async () => {
+    if (!incidenciaForm.descripcion.trim()) return
+    setGuardandoIncidencia(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await supabase.from('solicitud_incidencias').insert({
+      solicitud_id: seleccionada.id,
+      usuario_id: session?.user.id,
+      tipo: incidenciaForm.tipo,
+      descripcion: incidenciaForm.descripcion,
+      placa: incidenciaForm.placa || null,
+    })
+    setIncidenciaForm({ tipo: 'Otro', descripcion: '', placa: '' })
+    setMostrarFormIncidencia(false)
+    await cargarIncidencias(seleccionada.id)
+    setGuardandoIncidencia(false)
   }
 
   const actualizarFormAsignacion = async (idx: number, campo: string, valor: string) => {
@@ -259,16 +323,20 @@ export default function TransportePage() {
     const { data: nuevasAsigs } = await supabase.from('solicitud_asignaciones').insert(
       asignacionesForm.map((a: any, idx: number) => ({
         solicitud_id: seleccionada.id,
-        proveedor_id: a.proveedor_id, unidad_id: a.unidad_id,
-        conductor_id: a.conductor_id, orden: idx + 1,
+        proveedor_id: a.proveedor_id,
+        unidad_id: a.unidad_id,
+        conductor_id: a.conductor_id,
+        orden: idx + 1,
       }))
     ).select()
 
     if (nuevasAsigs && nuevasAsigs.length > 0) {
       await supabase.from('solicitud_unidad_status').insert(
         nuevasAsigs.map((a: any, idx: number) => ({
-          solicitud_id: seleccionada.id, asignacion_id: a.id,
-          orden: idx + 1, status: 'Asignado',
+          solicitud_id: seleccionada.id,
+          asignacion_id: a.id,
+          orden: idx + 1,
+          status: 'Asignado',
         }))
       )
     }
@@ -287,12 +355,15 @@ export default function TransportePage() {
       return `Unidad ${idx + 1}: ${proveedor?.razon_social || a.proveedor_id}`
     }).join(', ')
 
-    await registrarHistorial(estadoAnterior, 'asignada',
-      esReasignacion ? `Reasignacion — ${detalleAsignacion}` : `Asignacion — ${detalleAsignacion}`)
+    await registrarHistorial(
+      estadoAnterior, 'asignada',
+      esReasignacion ? `Reasignación — ${detalleAsignacion}` : `Asignación — ${detalleAsignacion}`
+    )
 
     setSeleccionada((prev: any) => ({ ...prev, estado: 'asignada', coordinador_transporte: coordinadorTransporte }))
     seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'asignada' }
     await cargarAsignaciones(seleccionada.id)
+    await cargarHistorial(seleccionada.id)
     await cargarSolicitudes()
     setModoReasignar(false)
     setGuardando(false)
@@ -301,34 +372,68 @@ export default function TransportePage() {
   const actualizarStatusUnidad = async (asignacionId: string, nuevoStatus: string) => {
     if (!nuevoStatus) return
     setGuardando(true)
-    const { data: existente } = await supabase.from('solicitud_unidad_status').select('id').eq('asignacion_id', asignacionId).single()
+
+    const statusAnterior = statusUnidadesRef.current[asignacionId] || 'Asignado'
     const ahora = new Date().toISOString()
     const esCompletado = nuevoStatus === 'Servicio completado'
 
+    const { data: existente } = await supabase.from('solicitud_unidad_status')
+      .select('id').eq('asignacion_id', asignacionId).single()
+
     if (existente) {
-      await supabase.from('solicitud_unidad_status').update({ status: nuevoStatus, fecha_entrega: esCompletado ? ahora : null, updated_at: ahora }).eq('asignacion_id', asignacionId)
+      await supabase.from('solicitud_unidad_status').update({
+        status: nuevoStatus,
+        fecha_entrega: esCompletado ? ahora : null,
+        updated_at: ahora,
+      }).eq('asignacion_id', asignacionId)
     } else {
       const asig = asignacionesDB.find((a: any) => a.id === asignacionId)
-      await supabase.from('solicitud_unidad_status').insert({ solicitud_id: seleccionada.id, asignacion_id: asignacionId, orden: asig?.orden || 1, status: nuevoStatus, fecha_entrega: esCompletado ? ahora : null })
+      await supabase.from('solicitud_unidad_status').insert({
+        solicitud_id: seleccionada.id,
+        asignacion_id: asignacionId,
+        orden: asig?.orden || 1,
+        status: nuevoStatus,
+        fecha_entrega: esCompletado ? ahora : null,
+      })
     }
 
-    const nuevoStatusMap = { ...statusUnidades, [asignacionId]: nuevoStatus }
-    setStatusUnidades(nuevoStatusMap)
+    // Registrar historial por cada cambio
+    const asig = asignacionesDB.find((a: any) => a.id === asignacionId)
+    const placa = asig?.unidades?.placa || `Unidad ${asig?.orden || ''}`
+    await registrarHistorial(
+      statusAnterior,
+      nuevoStatus,
+      `${placa}: ${statusAnterior} → ${nuevoStatus}`
+    )
 
-    const todasCompletadas = Object.keys(nuevoStatusMap).length === asignacionesDB.length &&
-      Object.values(nuevoStatusMap).every((s: any) => s === 'Servicio completado')
+    const nuevoStatusMap = { ...statusUnidadesRef.current, [asignacionId]: nuevoStatus }
+    setStatusUnidades(nuevoStatusMap)
+    statusUnidadesRef.current = nuevoStatusMap
+
+    const todasCompletadas = asignacionesDB.length > 0 &&
+      asignacionesDB.every((a: any) => nuevoStatusMap[a.id] === 'Servicio completado')
 
     if (todasCompletadas) {
       const fechaCulminacion = new Date()
       const deadline = new Date(fechaCulminacion.getTime() + 48 * 60 * 60 * 1000)
-      await supabase.from('solicitudes_transporte').update({ estado: 'entregada', fecha_entrega: fechaCulminacion.toISOString(), fecha_culminacion: fechaCulminacion.toISOString(), deadline_facturacion: deadline.toISOString() }).eq('id', seleccionada.id)
-      await registrarHistorial(seleccionadaRef.current?.estado || 'asignada', 'entregada', 'Todas las unidades completaron el servicio')
+      await supabase.from('solicitudes_transporte').update({
+        estado: 'entregada',
+        fecha_entrega: fechaCulminacion.toISOString(),
+        fecha_culminacion: fechaCulminacion.toISOString(),
+        deadline_facturacion: deadline.toISOString(),
+      }).eq('id', seleccionada.id)
+      await registrarHistorial(
+        seleccionadaRef.current?.estado || 'asignada',
+        'entregada',
+        'Todas las unidades completaron el servicio'
+      )
       setSeleccionada((prev: any) => ({ ...prev, estado: 'entregada', fecha_culminacion: fechaCulminacion.toISOString() }))
       seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'entregada' }
       await cargarSolicitudes()
     }
 
     await cargarAsignaciones(seleccionada.id)
+    await cargarHistorial(seleccionada.id)
     setGuardando(false)
   }
 
@@ -340,11 +445,18 @@ export default function TransportePage() {
     if (!error) {
       const ahora = new Date()
       const deadline = new Date(ahora.getTime() + 48 * 60 * 60 * 1000)
-      await supabase.from('solicitudes_transporte').update({ evidencia_url: ruta, estado: 'entregada', fecha_entrega: ahora.toISOString(), fecha_culminacion: ahora.toISOString(), deadline_facturacion: deadline.toISOString() }).eq('id', seleccionada.id)
+      await supabase.from('solicitudes_transporte').update({
+        evidencia_url: ruta,
+        estado: 'entregada',
+        fecha_entrega: ahora.toISOString(),
+        fecha_culminacion: ahora.toISOString(),
+        deadline_facturacion: deadline.toISOString(),
+      }).eq('id', seleccionada.id)
       await registrarHistorial(seleccionadaRef.current?.estado || 'asignada', 'entregada', 'Evidencia de entrega subida')
       setSeleccionada((prev: any) => ({ ...prev, evidencia_url: ruta, estado: 'entregada', fecha_entrega: ahora.toISOString() }))
       seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'entregada' }
       await cargarSolicitudes()
+      await cargarHistorial(seleccionada.id)
     }
     setGuardando(false)
   }
@@ -389,7 +501,9 @@ export default function TransportePage() {
       {/* NAV */}
       <nav style={{ background: '#0F1923', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '28px', filter: 'brightness(0) invert(1)' }} />
+          <a href="/transporte">
+            <img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} />
+          </a>
           <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)' }} />
           <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Panel de transporte</span>
           {nuevasSinVer > 0 && (
@@ -399,7 +513,6 @@ export default function TransportePage() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Notificaciones */}
           <div style={{ position: 'relative' }}>
             <button onClick={() => setMostrarNotif(!mostrarNotif)}
               style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', cursor: 'pointer', fontSize: '16px', padding: '6px 10px', position: 'relative', color: 'white' }}>
@@ -415,9 +528,7 @@ export default function TransportePage() {
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>Notificaciones</p>
                   {notificaciones.length > 0 && (
-                    <button onClick={marcarLeidas} style={{ fontSize: '11px', color: '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                      Marcar leídas
-                    </button>
+                    <button onClick={marcarLeidas} style={{ fontSize: '11px', color: '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Marcar leídas</button>
                   )}
                 </div>
                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
@@ -470,7 +581,11 @@ export default function TransportePage() {
             {nuevasSinVer > 0 && <p style={{ fontSize: '10px', color: '#E65100', fontWeight: 700, margin: 0 }}>⚡ {nuevasSinVer} sin revisar</p>}
           </div>
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {solicitudesFiltradas.map((sol: any) => {
+            {solicitudesFiltradas.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center' }}>
+                <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>Sin resultados</p>
+              </div>
+            ) : solicitudesFiltradas.map((sol: any) => {
               const badge = estadoBadgeMap[sol.estado] || estadoBadgeMap.pendiente
               const esNueva = !sol.visto_por_transporte && sol.estado === 'pendiente'
               return (
@@ -531,7 +646,7 @@ export default function TransportePage() {
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#C41230', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
                     {emailOperativo ? emailOperativo.charAt(0).toUpperCase() : '?'}
                   </div>
-                  <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>{emailOperativo || 'Cargando...'}</p>
+                  <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>{emailOperativo || 'Sin operativo asignado'}</p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: '#F8F9FA', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
@@ -539,10 +654,10 @@ export default function TransportePage() {
                     { label: 'Cliente', valor: seleccionada.clientes?.razon_social || seleccionada.consignatario || '—' },
                     { label: 'Shipment', valor: seleccionada.shipment || '—' },
                     { label: 'BL / AWB', valor: seleccionada.bl_awb || '—' },
-                    { label: 'Recojo', valor: seleccionada.direccion_recojo },
-                    { label: 'Entrega', valor: seleccionada.direccion_entrega },
+                    { label: 'Recojo', valor: seleccionada.direccion_recojo || '—' },
+                    { label: 'Entrega', valor: seleccionada.direccion_entrega || '—' },
                     { label: 'Zona', valor: seleccionada.zona || '—' },
-                    { label: 'Tipo de carga', valor: seleccionada.tipo_carga },
+                    { label: 'Tipo de carga', valor: seleccionada.tipo_carga || '—' },
                     { label: 'Unidades', valor: seleccionada.num_unidades || 1 },
                     { label: 'Fecha recojo', valor: formatFecha(seleccionada.fecha_recojo) },
                   ].map((item: any) => (
@@ -561,7 +676,7 @@ export default function TransportePage() {
                         <p style={{ fontSize: '12px', fontWeight: 700, color: '#2E7D32', margin: 0 }}>{formatFecha(seleccionada.fecha_culminacion, true)}</p>
                       </div>
                       <div>
-                        <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '0 0 2px', textTransform: 'uppercase' }}>Deadline facturación</p>
+                        <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '0 0 2px', textTransform: 'uppercase' }}>Deadline facturación (48h)</p>
                         <p style={{ fontSize: '12px', fontWeight: 700, color: '#C41230', margin: 0 }}>
                           {seleccionada.deadline_facturacion ? formatFecha(seleccionada.deadline_facturacion, true) : '—'}
                         </p>
@@ -600,7 +715,7 @@ export default function TransportePage() {
                     <div>
                       <p style={{ fontSize: '14px', fontWeight: 700, color: '#2E7D32', margin: '0 0 3px' }}>Servicio completado</p>
                       <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>
-                        Culminado el {formatFecha(seleccionada.fecha_entrega, true)}. No se pueden realizar más cambios.
+                        Culminado el {formatFecha(seleccionada.fecha_entrega, true)}.
                       </p>
                     </div>
                   </div>
@@ -780,6 +895,80 @@ export default function TransportePage() {
                 )}
               </div>
 
+              {/* INCIDENCIAS */}
+              <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', padding: '20px 24px', marginBottom: '14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: incidencias.length > 0 || mostrarFormIncidencia ? '16px' : '0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', background: '#FFF3E0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>⚠️</div>
+                    <div>
+                      <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>
+                        Incidencias
+                        {incidencias.length > 0 && <span style={{ fontSize: '11px', color: '#E65100', fontWeight: 700, marginLeft: '8px', background: '#FFF3E0', padding: '2px 8px', borderRadius: '20px' }}>{incidencias.length}</span>}
+                      </p>
+                      <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>Registra cualquier novedad durante el servicio</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setMostrarFormIncidencia(!mostrarFormIncidencia)}
+                    style={{ padding: '7px 16px', background: mostrarFormIncidencia ? '#F0F2F5' : '#FFF3E0', color: mostrarFormIncidencia ? '#8A9BB0' : '#E65100', border: `1px solid ${mostrarFormIncidencia ? '#E8ECF0' : '#FFCC80'}`, borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                    {mostrarFormIncidencia ? 'Cancelar' : '+ Agregar incidencia'}
+                  </button>
+                </div>
+
+                {/* Formulario nueva incidencia */}
+                {mostrarFormIncidencia && (
+                  <div style={{ background: '#FFF8F0', borderRadius: '10px', padding: '16px', marginBottom: '16px', border: '1px solid #FFCC80' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: '#E65100', margin: '0 0 12px', textTransform: 'uppercase' }}>Nueva incidencia</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Tipo</label>
+                        <select value={incidenciaForm.tipo} onChange={(e) => setIncidenciaForm({ ...incidenciaForm, tipo: e.target.value })}
+                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', color: '#0F1923' }}>
+                          {Object.keys(tipoIncidenciaMap).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Placa afectada (opcional)</label>
+                        <input type="text" value={incidenciaForm.placa}
+                          onChange={(e) => setIncidenciaForm({ ...incidenciaForm, placa: e.target.value })}
+                          placeholder="Ej: ABC-123"
+                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Descripción *</label>
+                      <textarea value={incidenciaForm.descripcion}
+                        onChange={(e) => setIncidenciaForm({ ...incidenciaForm, descripcion: e.target.value })}
+                        placeholder="Describe la incidencia con el mayor detalle posible..."
+                        rows={3}
+                        style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const, color: '#0F1923', fontFamily: 'inherit' }} />
+                    </div>
+                    <button onClick={guardarIncidencia} disabled={guardandoIncidencia || !incidenciaForm.descripcion.trim()}
+                      style={{ padding: '9px 20px', background: '#E65100', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: !incidenciaForm.descripcion.trim() ? 0.5 : 1 }}>
+                      {guardandoIncidencia ? 'Guardando...' : 'Registrar incidencia'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Lista incidencias */}
+                {incidencias.length === 0 && !mostrarFormIncidencia ? (
+                  <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0, textAlign: 'center', padding: '12px 0' }}>Sin incidencias registradas</p>
+                ) : incidencias.map((inc: any, i: number) => {
+                  const tc = tipoIncidenciaMap[inc.tipo] || tipoIncidenciaMap['Otro']
+                  return (
+                    <div key={inc.id} style={{ background: '#FAFBFC', borderRadius: '10px', padding: '14px', marginBottom: i < incidencias.length - 1 ? '10px' : '0', border: '1px solid #E8ECF0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: tc.bg, color: tc.color }}>{inc.tipo}</span>
+                          {inc.placa && <span style={{ fontSize: '10px', color: '#8A9BB0', fontWeight: 600 }}>🚛 {inc.placa}</span>}
+                        </div>
+                        <p style={{ fontSize: '10px', color: '#BCC6D0', margin: 0 }}>{formatFecha(inc.created_at, true)}</p>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#0F1923', margin: 0, lineHeight: '1.5' }}>{inc.descripcion}</p>
+                    </div>
+                  )
+                })}
+              </div>
+
               {/* Historial */}
               <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -787,7 +976,9 @@ export default function TransportePage() {
                   <span style={{ fontSize: '10px', color: '#2E7D32', background: '#E8F5E9', padding: '3px 10px', borderRadius: '20px', border: '1px solid #A5D6A7', fontWeight: 600 }}>● En tiempo real</span>
                 </div>
                 {historial.length === 0 ? (
-                  <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>Sin cambios registrados aún</p>
+                  <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                    <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>Sin cambios registrados aún</p>
+                  </div>
                 ) : historial.map((h: any, i: number) => {
                   const bAnterior = estadoBadgeMap[h.estado_anterior] || { bg: '#F5F5F5', color: '#616161', texto: h.estado_anterior || '—' }
                   const bNuevo = estadoBadgeMap[h.estado_nuevo] || { bg: '#F5F5F5', color: '#616161', texto: h.estado_nuevo || '—' }
