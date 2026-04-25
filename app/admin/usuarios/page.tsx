@@ -42,6 +42,7 @@ export default function GestionUsuariosPage() {
   const [editandoRol, setEditandoRol] = useState<string | null>(null)
   const [nuevoRol, setNuevoRol] = useState('')
   const [confirmEliminar, setConfirmEliminar] = useState<string | null>(null)
+  const [rucEstado, setRucEstado] = useState<'' | 'buscando' | 'ok' | 'error'>('')
 
   const esInterno = ROLES_INTERNOS.includes(form.rol)
 
@@ -49,26 +50,26 @@ export default function GestionUsuariosPage() {
 
   const cargarUsuarios = async () => {
     setLoadingUsuarios(true)
-    const { data } = await supabase
-      .from('perfiles')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('perfiles').select('*').order('created_at', { ascending: false })
     setUsuarios(data || [])
     setLoadingUsuarios(false)
   }
 
-  const usuariosInternos = usuarios.filter((u: any) => ROLES_INTERNOS.includes(u.rol))
-  const usuariosExternos = usuarios.filter((u: any) => u.rol === 'proveedor' || !u.rol)
-
-  const filtrar = (lista: any[]) => {
-    if (!busqueda) return lista
-    const q = busqueda.toLowerCase()
-    return lista.filter((u: any) =>
-      u.email?.toLowerCase().includes(q) ||
-      u.nombre?.toLowerCase().includes(q) ||
-      u.razon_social?.toLowerCase().includes(q) ||
-      u.ruc?.includes(q)
-    )
+  const buscarRUC = async (ruc: string) => {
+    if (ruc.length !== 11) return
+    setRucEstado('buscando')
+    try {
+      const res = await fetch(`/api/validar-ruc?ruc=${ruc}`)
+      const data = await res.json()
+      if (data.nombre) {
+        setForm(prev => ({ ...prev, razon_social: data.nombre }))
+        setRucEstado('ok')
+      } else {
+        setRucEstado('error')
+      }
+    } catch {
+      setRucEstado('error')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,9 +78,14 @@ export default function GestionUsuariosPage() {
     setError('')
     setExito('')
 
+    if (form.rol === 'proveedor' && rucEstado !== 'ok') {
+      setError('Debes validar el RUC antes de continuar')
+      setLoading(false)
+      return
+    }
+
     if (form.rol === 'proveedor' && form.ruc) {
-      const { data: existing } = await supabase
-        .from('perfiles').select('id').eq('ruc', form.ruc).single()
+      const { data: existing } = await supabase.from('perfiles').select('id').eq('ruc', form.ruc).single()
       if (existing) {
         setError('Ya existe un proveedor con ese RUC')
         setLoading(false)
@@ -93,7 +99,7 @@ export default function GestionUsuariosPage() {
       body: JSON.stringify({
         email: form.email,
         password: form.password,
-        razon_social: esInterno ? form.razon_social : form.razon_social,
+        razon_social: form.razon_social,
         ruc: esInterno ? '' : form.ruc,
         rol: form.rol,
       })
@@ -105,6 +111,7 @@ export default function GestionUsuariosPage() {
     } else {
       setExito('✅ Usuario creado exitosamente')
       setForm({ ruc: '', razon_social: '', email: '', password: '', rol: '' })
+      setRucEstado('')
       await cargarUsuarios()
       setTimeout(() => { setVista('lista'); setExito('') }, 1500)
     }
@@ -130,6 +137,20 @@ export default function GestionUsuariosPage() {
   }
 
   const rolLabel = (rol: string) => ROLES.find(r => r.value === rol)?.label || rol
+
+  const usuariosInternos = usuarios.filter((u: any) => ROLES_INTERNOS.includes(u.rol))
+  const usuariosExternos = usuarios.filter((u: any) => u.rol === 'proveedor' || !u.rol)
+
+  const filtrar = (lista: any[]) => {
+    if (!busqueda) return lista
+    const q = busqueda.toLowerCase()
+    return lista.filter((u: any) =>
+      u.email?.toLowerCase().includes(q) ||
+      u.nombre?.toLowerCase().includes(q) ||
+      u.razon_social?.toLowerCase().includes(q) ||
+      u.ruc?.includes(q)
+    )
+  }
 
   const listaActual = filtrar(pestana === 'internos' ? usuariosInternos : usuariosExternos)
 
@@ -204,7 +225,9 @@ export default function GestionUsuariosPage() {
       {/* SIDEBAR */}
       <div style={{ position: 'fixed', top: 0, left: 0, width: '220px', height: '100vh', background: '#0F1923', display: 'flex', flexDirection: 'column', zIndex: 100 }}>
         <div style={{ padding: '24px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <img src="/LogoOmni.png" alt="Omni" style={{ height: '30px', filter: 'brightness(0) invert(1)' }} />
+          <a href="/admin">
+            <img src="/LogoOmni.png" alt="Omni" style={{ height: '30px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} />
+          </a>
           <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', margin: '8px 0 0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Panel de administración</p>
         </div>
         <nav style={{ flex: 1, padding: '16px 12px' }}>
@@ -259,17 +282,12 @@ export default function GestionUsuariosPage() {
         {/* LISTA */}
         {vista === 'lista' && (
           <div>
-            {/* Búsqueda */}
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #E8ECF0', padding: '14px 20px', marginBottom: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-              <input
-                type="text"
-                placeholder="Buscar por nombre, email, razón social o RUC..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
+              <input type="text" placeholder="Buscar por nombre, email, razón social o RUC..."
+                value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
                 style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#0F1923', boxSizing: 'border-box' as any }} />
             </div>
 
-            {/* Tabs internos / externos */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: 'white', padding: '4px', borderRadius: '10px', border: '1px solid #E8ECF0', width: 'fit-content' }}>
               <button onClick={() => setPestana('internos')}
                 style={{ padding: '7px 20px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: 'none', background: pestana === 'internos' ? '#0F1923' : 'transparent', color: pestana === 'internos' ? 'white' : '#8A9BB0' }}>
@@ -313,55 +331,80 @@ export default function GestionUsuariosPage() {
             <div style={{ background: 'white', borderRadius: '14px', padding: '32px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
               <form onSubmit={handleSubmit}>
 
+                {/* Rol */}
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rol</label>
-                  <select required value={form.rol} onChange={(e) => setForm({ ...form, rol: e.target.value, ruc: '', razon_social: '' })}
+                  <select required value={form.rol}
+                    onChange={(e) => { setForm({ ...form, rol: e.target.value, ruc: '', razon_social: '' }); setRucEstado('') }}
                     style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, background: 'white', color: '#0F1923', outline: 'none' }}>
                     <option value="">Selecciona un rol</option>
                     {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </div>
 
+                {/* RUC y Razón Social — solo proveedores */}
                 {form.rol === 'proveedor' && (
                   <>
                     <div style={{ marginBottom: '16px' }}>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RUC</label>
-                      <input type="text" required maxLength={11} value={form.ruc}
-                        onChange={(e) => setForm({ ...form, ruc: e.target.value })}
-                        placeholder="20xxxxxxxxx"
-                        style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                      <div style={{ position: 'relative' }}>
+                        <input type="text" required maxLength={11}
+                          value={form.ruc}
+                          onChange={async (e) => {
+                            const val = e.target.value.replace(/\D/g, '').slice(0, 11)
+                            setForm(prev => ({ ...prev, ruc: val, razon_social: '' }))
+                            setRucEstado('')
+                            if (val.length === 11) await buscarRUC(val)
+                          }}
+                          placeholder="20xxxxxxxxx"
+                          style={{ width: '100%', padding: '11px 14px', paddingRight: '40px', border: `1.5px solid ${rucEstado === 'ok' ? '#A5D6A7' : rucEstado === 'error' ? '#EF9A9A' : '#E8ECF0'}`, borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                        <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px' }}>
+                          {rucEstado === 'buscando' ? '⏳' : rucEstado === 'ok' ? '✅' : rucEstado === 'error' ? '❌' : ''}
+                        </span>
+                      </div>
+                      {rucEstado === 'buscando' && <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '4px 0 0' }}>Consultando SUNAT...</p>}
+                      {rucEstado === 'error' && <p style={{ fontSize: '11px', color: '#B71C1C', margin: '4px 0 0' }}>RUC no encontrado en SUNAT</p>}
+                      {rucEstado === 'ok' && <p style={{ fontSize: '11px', color: '#2E7D32', margin: '4px 0 0' }}>RUC validado correctamente</p>}
                     </div>
+
                     <div style={{ marginBottom: '16px' }}>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Razón Social</label>
-                      <input type="text" required value={form.razon_social}
+                      <input type="text" required
+                        value={form.razon_social}
                         onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
-                        placeholder="Empresa S.A.C."
-                        style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
+                        placeholder="Se llena automáticamente con el RUC"
+                        style={{ width: '100%', padding: '11px 14px', border: `1.5px solid ${rucEstado === 'ok' ? '#A5D6A7' : '#E8ECF0'}`, borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none', background: rucEstado === 'ok' ? '#F1F8F1' : 'white' }} />
                     </div>
                   </>
                 )}
 
+                {/* Nombre — usuarios internos */}
                 {esInterno && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nombre completo</label>
-                    <input type="text" required value={form.razon_social}
+                    <input type="text" required
+                      value={form.razon_social}
                       onChange={(e) => setForm({ ...form, razon_social: e.target.value })}
                       placeholder="Ej: Juan Pérez"
                       style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
                   </div>
                 )}
 
+                {/* Email */}
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Correo Electrónico</label>
-                  <input type="email" required value={form.email}
+                  <input type="email" required
+                    value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     placeholder="usuario@empresa.com"
                     style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
                 </div>
 
+                {/* Contraseña */}
                 <div style={{ marginBottom: '24px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#444', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contraseña Temporal</label>
-                  <input type="password" required value={form.password}
+                  <input type="password" required
+                    value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="Mínimo 6 caracteres"
                     style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' as any, color: '#0F1923', outline: 'none' }} />
