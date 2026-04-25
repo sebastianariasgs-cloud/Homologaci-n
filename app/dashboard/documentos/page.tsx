@@ -26,10 +26,10 @@ const DOCS_CONDUCTOR = [
 
 const DOCS_UNIDAD = [
   'SOAT',
-  'Revisión técnica',
+  'Revision tecnica',
   'Tarjeta de propiedad',
   'Mantenimiento preventivo',
-  'Póliza de seguros contra terceros',
+  'Poliza de seguros contra terceros',
 ]
 
 const TIPOS_UNIDAD = [

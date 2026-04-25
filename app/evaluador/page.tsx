@@ -7,7 +7,12 @@ import Notificaciones from '../components/Notificaciones'
 import BotonAdmin from '../components/BotonAdmin'
 
 const DOCS_CON_VENCIMIENTO = [
-  'Poliza de seguros contra terceros', 'SOAT', 'Licencia de conducir', 'SCTR', 'Revision tecnica',
+  'SOAT',
+  'Revision tecnica',
+  'Poliza de seguros contra terceros',
+  'Licencia de conducir',
+  'SCTR',
+  'Certificado habilitacion vehicular MTC',
 ]
 
 const validarFecha = (valor: string) => {
