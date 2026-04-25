@@ -9,6 +9,9 @@ export default function DashboardPage() {
   const router = useRouter()
   const [proveedor, setProveedor] = useState<any>(null)
   const [documentos, setDocumentos] = useState<any[]>([])
+  const [docsConductor, setDocsConductor] = useState<any[]>([])
+  const [docsUnidad, setDocsUnidad] = useState<any[]>([])
+  const [docsRequeridos, setDocsRequeridos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { cargarDatos() }, [])
@@ -17,13 +20,33 @@ export default function DashboardPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/login'); return }
 
-    const { data } = await supabase
+    const { data: prov } = await supabase
       .from('proveedores').select('*').eq('user_id', session.user.id).single()
-    setProveedor(data)
+    setProveedor(prov)
 
-    const { data: docs } = await supabase
-      .from('documentos').select('*').eq('proveedor_id', data?.id)
-    setDocumentos(docs || [])
+    if (prov) {
+      const { data: docs } = await supabase.from('documentos').select('*').eq('proveedor_id', prov.id)
+      setDocumentos(docs || [])
+
+      const { data: tiposProv } = await supabase.from('proveedor_tipos').select('tipo_id').eq('proveedor_id', prov.id)
+      if (tiposProv && tiposProv.length > 0) {
+        const { data: req } = await supabase.from('documentos_requeridos').select('*').in('tipo_proveedor_id', tiposProv.map((t: any) => t.tipo_id)).eq('activo', true)
+        const nombresVistos = new Set()
+        setDocsRequeridos((req || []).filter((d: any) => { if (nombresVistos.has(d.nombre)) return false; nombresVistos.add(d.nombre); return true }))
+      }
+
+      const { data: conds } = await supabase.from('conductores').select('id').eq('proveedor_id', prov.id).eq('activo', true)
+      if (conds && conds.length > 0) {
+        const { data: dc } = await supabase.from('documentos_conductor').select('*').in('conductor_id', conds.map((c: any) => c.id))
+        setDocsConductor(dc || [])
+      }
+
+      const { data: units } = await supabase.from('unidades').select('id').eq('proveedor_id', prov.id).eq('activo', true)
+      if (units && units.length > 0) {
+        const { data: du } = await supabase.from('documentos_unidad').select('*').in('unidad_id', units.map((u: any) => u.id))
+        setDocsUnidad(du || [])
+      }
+    }
 
     setLoading(false)
   }
@@ -34,48 +57,59 @@ export default function DashboardPage() {
   }
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F7F7' }}>
-      <p style={{ color: '#888', fontSize: '14px' }}>Cargando...</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F0F2F5', fontFamily: "'Segoe UI', sans-serif" }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid #EEEEEE', borderTopColor: '#C41230', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }} />
+        <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>Cargando...</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 
-  const pasos = ['Registro', 'Documentos', 'En revisión', 'Aprobación', 'Homologado']
-  const pasoActual = proveedor?.estado === 'homologado' ? 4 :
+  const totalDocs = docsRequeridos.length
+  const docsSubidos = documentos.length + docsConductor.length + docsUnidad.length
+  const docsAprobados = [...documentos, ...docsConductor, ...docsUnidad].filter((d: any) => d.estado === 'aprobado').length
+  const docsPendientes = [...documentos, ...docsConductor, ...docsUnidad].filter((d: any) => d.estado === 'pendiente').length
+  const docsRechazados = [...documentos, ...docsConductor, ...docsUnidad].filter((d: any) => d.estado === 'rechazado').length
+  const progreso = totalDocs > 0 ? Math.min(Math.round((docsSubidos / totalDocs) * 100), 100) : 0
+
+  const pasos = ['Registro', 'Documentos', 'En revisión', 'Homologado']
+  const pasoActual = proveedor?.estado === 'homologado' ? 3 :
     proveedor?.estado === 'aprobado' ? 3 :
     proveedor?.estado === 'en_revision' ? 2 :
-    documentos.length > 0 ? 1 : 0
+    docsSubidos > 0 ? 1 : 0
 
-  const estadoColor: { [key: string]: { bg: string, text: string } } = {
-    pendiente: { bg: '#FFF7ED', text: '#C2410C' },
-    en_revision: { bg: '#EFF6FF', text: '#1D4ED8' },
-    aprobado: { bg: '#F0FDF4', text: '#15803D' },
-    homologado: { bg: '#F0FDF4', text: '#15803D' },
-    rechazado: { bg: '#FEF2F2', text: '#C41230' },
+  const estadoBadge: { [key: string]: { bg: string, color: string, texto: string } } = {
+    pendiente:   { bg: '#FFF3E0', color: '#E65100', texto: 'Pendiente de revisión' },
+    en_revision: { bg: '#E3F2FD', color: '#1565C0', texto: 'En revisión' },
+    aprobado:    { bg: '#E8F5E9', color: '#2E7D32', texto: 'Aprobado' },
+    homologado:  { bg: '#E8F5E9', color: '#2E7D32', texto: '✅ Homologado' },
+    rechazado:   { bg: '#FFEBEE', color: '#B71C1C', texto: 'Rechazado' },
   }
 
-  const estadoActual = estadoColor[proveedor?.estado] || estadoColor.pendiente
-
+  const badge = estadoBadge[proveedor?.estado] || estadoBadge.pendiente
   const perfilCompleto = !!(proveedor?.tipo_servicio?.length > 0 || proveedor?.tipo_id)
-  const docsSubidos = documentos.length > 0
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#F0F2F5', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
 
-      {/* Navbar */}
-      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
-          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
-          <span style={{ fontSize: '13px', color: '#888' }}>Portal del proveedor</span>
+      {/* NAV */}
+      <nav style={{ background: '#0F1923', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <a href="/dashboard">
+            <img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} />
+          </a>
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)' }} />
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: 400 }}>Portal del proveedor</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <Notificaciones proveedorId={proveedor?.id} />
           <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '13px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>{proveedor?.razon_social}</p>
-            <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>RUC {proveedor?.ruc}</p>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: 'white', margin: 0 }}>{proveedor?.razon_social}</p>
+            <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', margin: 0 }}>RUC {proveedor?.ruc}</p>
           </div>
           <button onClick={handleLogout}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px' }}>
+            style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Salir
           </button>
         </div>
@@ -85,47 +119,37 @@ export default function DashboardPage() {
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '32px 24px' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#1a1a1a', margin: 0 }}>
-            Mi homologación
-          </h1>
-          <p style={{ fontSize: '13px', color: '#888', marginTop: '4px' }}>
-            Sigue el progreso de tu proceso de homologación
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#0F1923', margin: '0 0 4px' }}>Mi homologación</h1>
+            <p style={{ fontSize: '13px', color: '#8A9BB0', margin: 0 }}>Sigue el progreso de tu proceso</p>
+          </div>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '6px 16px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
+            {badge.texto}
+          </span>
         </div>
 
-        {/* Estado actual */}
-        <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #EEEEEE', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>
-              Estado del proceso
-            </h2>
-            <span style={{ fontSize: '12px', fontWeight: 600, padding: '4px 12px', borderRadius: '20px', background: estadoActual.bg, color: estadoActual.text }}>
-              {proveedor?.estado === 'pendiente' ? 'Pendiente de revisión' :
-               proveedor?.estado === 'homologado' ? 'Homologado' :
-               proveedor?.estado === 'rechazado' ? 'Rechazado' :
-               proveedor?.estado === 'aprobado' ? 'Aprobado' : 'En proceso'}
-            </span>
+        {/* Progreso + pasos */}
+        <div style={{ background: 'white', borderRadius: '14px', padding: '24px', border: '1px solid #E8ECF0', marginBottom: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>Progreso de documentación</p>
+            <p style={{ fontSize: '13px', fontWeight: 700, color: '#C41230', margin: 0 }}>{progreso}%</p>
+          </div>
+          <div style={{ height: '8px', background: '#F0F2F5', borderRadius: '4px', overflow: 'hidden', marginBottom: '20px' }}>
+            <div style={{ height: '100%', background: progreso === 100 ? '#2E7D32' : '#C41230', borderRadius: '4px', width: `${progreso}%`, transition: 'width 0.5s' }} />
           </div>
 
-          {/* Barra de pasos */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
+          {/* Pasos */}
+          <div style={{ display: 'flex', alignItems: 'flex-start' }}>
             {pasos.map((paso, i) => (
               <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                 {i < pasos.length - 1 && (
-                  <div style={{ position: 'absolute', top: '14px', left: '50%', width: '100%', height: '2px', background: i < pasoActual ? '#C41230' : '#E5E5E5', zIndex: 0 }} />
+                  <div style={{ position: 'absolute', top: '14px', left: '50%', width: '100%', height: '2px', background: i < pasoActual ? '#C41230' : '#E8ECF0', zIndex: 0 }} />
                 )}
-                <div style={{
-                  width: '28px', height: '28px', borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '11px', fontWeight: 600, zIndex: 1, position: 'relative',
-                  background: i < pasoActual ? '#C41230' : 'white',
-                  color: i < pasoActual ? 'white' : i === pasoActual ? '#C41230' : '#CCC',
-                  border: i === pasoActual ? '2px solid #C41230' : i < pasoActual ? 'none' : '2px solid #E5E5E5',
-                }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, zIndex: 1, position: 'relative', background: i < pasoActual ? '#C41230' : i === pasoActual ? 'white' : '#F0F2F5', color: i < pasoActual ? 'white' : i === pasoActual ? '#C41230' : '#BCC6D0', border: i === pasoActual ? '2px solid #C41230' : 'none' }}>
                   {i < pasoActual ? '✓' : i + 1}
                 </div>
-                <span style={{ fontSize: '11px', marginTop: '8px', textAlign: 'center', color: i <= pasoActual ? '#1a1a1a' : '#AAA', fontWeight: i === pasoActual ? 600 : 400 }}>
+                <span style={{ fontSize: '11px', marginTop: '8px', textAlign: 'center', color: i <= pasoActual ? '#0F1923' : '#BCC6D0', fontWeight: i === pasoActual ? 700 : 400 }}>
                   {paso}
                 </span>
               </div>
@@ -133,15 +157,32 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Cards — orden: Mi perfil, Mis documentos, Mi score */}
+        {/* KPIs documentos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+          {[
+            { label: 'Total requeridos', valor: totalDocs, bg: 'white', color: '#0F1923', border: '#E8ECF0', icon: '📋' },
+            { label: 'Aprobados', valor: docsAprobados, bg: '#E8F5E9', color: '#2E7D32', border: '#A5D6A7', icon: '✅' },
+            { label: 'En revisión', valor: docsPendientes, bg: '#E3F2FD', color: '#1565C0', border: '#90CAF9', icon: '⏳' },
+            { label: 'Rechazados', valor: docsRechazados, bg: '#FFEBEE', color: '#B71C1C', border: '#EF9A9A', icon: '❌' },
+          ].map((kpi: any) => (
+            <div key={kpi.label} style={{ background: kpi.bg, borderRadius: '12px', padding: '16px', border: `1px solid ${kpi.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+              <span style={{ fontSize: '18px' }}>{kpi.icon}</span>
+              <p style={{ fontSize: '26px', fontWeight: 800, color: kpi.color, margin: '8px 0 4px', lineHeight: 1 }}>{kpi.valor}</p>
+              <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>{kpi.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Cards navegación */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '20px' }}>
           {[
             {
               titulo: 'Mi perfil',
-              desc: 'Completa y actualiza los datos de tu empresa, tipo de servicios y alcance de operación.',
+              desc: 'Completa los datos de tu empresa, tipo de servicios y alcance de operación.',
               link: '/dashboard/perfil',
               linkText: 'Ver perfil →',
               icon: '🏢',
+              done: perfilCompleto,
             },
             {
               titulo: 'Mis documentos',
@@ -149,6 +190,7 @@ export default function DashboardPage() {
               link: '/dashboard/documentos',
               linkText: 'Ir a documentos →',
               icon: '📄',
+              done: docsSubidos > 0,
             },
             {
               titulo: 'Mi score',
@@ -156,54 +198,52 @@ export default function DashboardPage() {
               link: null,
               linkText: 'Disponible tras la revisión',
               icon: '📊',
+              done: false,
             },
-          ].map((card) => (
-            <div key={card.titulo} style={{ background: 'white', borderRadius: '12px', padding: '20px', border: '1px solid #EEEEEE', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', marginBottom: '12px' }}>
-                {card.icon}
+          ].map((card: any) => (
+            <div key={card.titulo} style={{ background: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #E8ECF0', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'box-shadow 0.15s' }}
+              onMouseEnter={(e: any) => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
+              onMouseLeave={(e: any) => e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                  {card.icon}
+                </div>
+                {card.done && <span style={{ fontSize: '10px', fontWeight: 700, background: '#E8F5E9', color: '#2E7D32', padding: '3px 8px', borderRadius: '20px' }}>✓ Completado</span>}
               </div>
-              <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', marginBottom: '6px' }}>
-                {card.titulo}
-              </h3>
-              <p style={{ fontSize: '12px', color: '#888', lineHeight: 1.6, flex: 1, marginBottom: '12px' }}>
-                {card.desc}
-              </p>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F1923', marginBottom: '6px', margin: '0 0 6px' }}>{card.titulo}</h3>
+              <p style={{ fontSize: '12px', color: '#8A9BB0', lineHeight: 1.6, flex: 1, margin: '0 0 14px' }}>{card.desc}</p>
               {card.link ? (
-                <a href={card.link} style={{ fontSize: '12px', color: '#C41230', fontWeight: 600, textDecoration: 'none' }}>
+                <a href={card.link} style={{ fontSize: '12px', color: '#C41230', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   {card.linkText}
                 </a>
               ) : (
-                <span style={{ fontSize: '12px', color: '#CCC' }}>{card.linkText}</span>
+                <span style={{ fontSize: '12px', color: '#BCC6D0' }}>{card.linkText}</span>
               )}
             </div>
           ))}
         </div>
 
-        {/* Próximos pasos — sin tachado, solo checks */}
-        <div style={{ background: '#FEF2F2', borderRadius: '12px', padding: '20px', border: '1px solid #FECACA' }}>
-          <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#C41230', marginBottom: '14px' }}>
-            Próximos pasos
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Próximos pasos */}
+        <div style={{ background: 'white', borderRadius: '14px', padding: '24px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: '0 0 16px' }}>Próximos pasos</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
-              { num: 1, texto: 'Completa los datos de tu empresa en Mi perfil', done: perfilCompleto },
-              { num: 2, texto: 'Carga todos los documentos requeridos', done: docsSubidos },
-              { num: 3, texto: 'Espera la revisión y aprobación del evaluador', done: proveedor?.estado === 'homologado' || proveedor?.estado === 'aprobado' },
-            ].map((paso) => (
-              <div key={paso.num} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                  width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '11px', fontWeight: 600,
-                  background: paso.done ? '#C41230' : 'white',
-                  color: paso.done ? 'white' : '#C41230',
-                  border: paso.done ? 'none' : '2px solid #C41230',
-                }}>
+              { num: 1, texto: 'Completa los datos de tu empresa en Mi perfil', done: perfilCompleto, link: '/dashboard/perfil' },
+              { num: 2, texto: 'Carga todos los documentos requeridos', done: docsSubidos > 0, link: '/dashboard/documentos' },
+              { num: 3, texto: 'Espera la revisión del equipo de Omni Logistics', done: proveedor?.estado === 'homologado' || proveedor?.estado === 'aprobado', link: null },
+            ].map((paso: any) => (
+              <div key={paso.num} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: paso.done ? '#E8F5E9' : '#F8F9FA', border: `1px solid ${paso.done ? '#A5D6A7' : '#E8ECF0'}` }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, background: paso.done ? '#2E7D32' : '#C41230', color: 'white' }}>
                   {paso.done ? '✓' : paso.num}
                 </div>
-                <span style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                <span style={{ fontSize: '13px', color: paso.done ? '#2E7D32' : '#0F1923', fontWeight: paso.done ? 600 : 400, flex: 1 }}>
                   {paso.texto}
                 </span>
+                {paso.link && !paso.done && (
+                  <a href={paso.link} style={{ fontSize: '12px', color: '#C41230', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' as const }}>
+                    Ir →
+                  </a>
+                )}
               </div>
             ))}
           </div>
