@@ -35,12 +35,12 @@ const statusColor: { [key: string]: { bg: string, color: string } } = {
 }
 
 const tipoIncidenciaMap: { [key: string]: { bg: string, color: string } } = {
-  'Accidente':         { bg: '#FFEBEE', color: '#B71C1C' },
-  'Avería mecánica':   { bg: '#FFF3E0', color: '#E65100' },
-  'Retraso':           { bg: '#FFF8E1', color: '#F57F17' },
-  'Problema de acceso':{ bg: '#E8EAF6', color: '#283593' },
-  'Carga dañada':      { bg: '#FCE4EC', color: '#880E4F' },
-  'Otro':              { bg: '#F5F5F5', color: '#616161' },
+  'Accidente':          { bg: '#FFEBEE', color: '#B71C1C' },
+  'Avería mecánica':    { bg: '#FFF3E0', color: '#E65100' },
+  'Retraso':            { bg: '#FFF8E1', color: '#F57F17' },
+  'Problema de acceso': { bg: '#E8EAF6', color: '#283593' },
+  'Carga dañada':       { bg: '#FCE4EC', color: '#880E4F' },
+  'Otro':               { bg: '#F5F5F5', color: '#616161' },
 }
 
 const formatFecha = (fecha: string, conHora = false) => {
@@ -55,11 +55,15 @@ const formatFecha = (fecha: string, conHora = false) => {
 type AsignacionForm = {
   proveedor_id: string; unidad_id: string; conductor_id: string
   unidades_proveedor: any[]; conductores_proveedor: any[]
+  nueva_placa?: string; nuevo_conductor?: string
+  modo_nueva_unidad?: boolean; modo_nuevo_conductor?: boolean
 }
 
 const asignacionVacia = (): AsignacionForm => ({
   proveedor_id: '', unidad_id: '', conductor_id: '',
   unidades_proveedor: [], conductores_proveedor: [],
+  nueva_placa: '', nuevo_conductor: '',
+  modo_nueva_unidad: false, modo_nuevo_conductor: false,
 })
 
 export default function TransportePage() {
@@ -89,6 +93,10 @@ export default function TransportePage() {
   const [mostrarFormIncidencia, setMostrarFormIncidencia] = useState(false)
   const [incidenciaForm, setIncidenciaForm] = useState({ tipo: 'Otro', descripcion: '', placa: '' })
   const [guardandoIncidencia, setGuardandoIncidencia] = useState(false)
+  const [mostrarFormNuevoProveedor, setMostrarFormNuevoProveedor] = useState(false)
+  const [nuevoProveedorForm, setNuevoProveedorForm] = useState({ ruc: '', razon_social: '', placa: '', conductor: '' })
+  const [guardandoNuevoProveedor, setGuardandoNuevoProveedor] = useState(false)
+  const [rucUrgente, setRucUrgente] = useState<'' | 'buscando' | 'ok' | 'error'>('')
   const canalSolicitudRef = useRef<any>(null)
   const seleccionadaRef = useRef<any>(null)
   const statusUnidadesRef = useRef<{ [key: string]: string }>({})
@@ -98,36 +106,31 @@ export default function TransportePage() {
     if (iniciado.current) return
     iniciado.current = true
     init()
-    return () => {
-      if (canalSolicitudRef.current) supabase.removeChannel(canalSolicitudRef.current)
-    }
+    return () => { if (canalSolicitudRef.current) supabase.removeChannel(canalSolicitudRef.current) }
   }, [])
 
-  useEffect(() => {
-    statusUnidadesRef.current = statusUnidades
-  }, [statusUnidades])
+  useEffect(() => { statusUnidadesRef.current = statusUnidades }, [statusUnidades])
 
   const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/login'); return }
-    const { data: perfil } = await supabase
-      .from('perfiles').select('rol').eq('id', session.user.id).single()
+    const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', session.user.id).single()
     if (!['transporte', 'admin'].includes(perfil?.rol)) { router.push('/dashboard'); return }
     setUserId(session.user.id)
-
-    const { data: provs } = await supabase
-      .from('proveedores').select('id, razon_social, ruc').eq('estado', 'homologado').order('razon_social')
-    setProveedoresHomologados(provs || [])
-
+    await cargarProveedoresHomologados()
     await cargarSolicitudes()
     await cargarNotificaciones(session.user.id)
-
     supabase.channel(`notif-tp-${session.user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones', filter: `usuario_id=eq.${session.user.id}` },
         (payload: any) => { setNotificaciones((prev: any) => [payload.new, ...prev]); cargarSolicitudes() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_transporte' },
-        () => cargarSolicitudes())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_transporte' }, () => cargarSolicitudes())
       .subscribe()
+  }
+
+  const cargarProveedoresHomologados = async () => {
+    const { data: provs } = await supabase
+      .from('proveedores').select('id, razon_social, ruc').eq('estado', 'homologado').order('razon_social')
+    setProveedoresHomologados(provs || [])
   }
 
   const cargarNotificaciones = async (uid: string) => {
@@ -151,10 +154,76 @@ export default function TransportePage() {
 
   const cargarUnidadesConductores = async (proveedorId: string) => {
     const [{ data: units }, { data: conds }] = await Promise.all([
-      supabase.from('unidades').select('id, placa').eq('proveedor_id', proveedorId).eq('activo', true),
-      supabase.from('conductores').select('id, nombre_completo').eq('proveedor_id', proveedorId).eq('activo', true),
+      supabase.from('unidades').select('id, placa, pendiente_revision').eq('proveedor_id', proveedorId).eq('activo', true),
+      supabase.from('conductores').select('id, nombre_completo, pendiente_revision').eq('proveedor_id', proveedorId).eq('activo', true),
     ])
     return { unidades: units || [], conductores: conds || [] }
+  }
+
+  const crearProveedorUrgente = async () => {
+    if (!nuevoProveedorForm.ruc || !nuevoProveedorForm.razon_social || !nuevoProveedorForm.placa || !nuevoProveedorForm.conductor) {
+      alert('Completa todos los campos')
+      return
+    }
+    setGuardandoNuevoProveedor(true)
+    try {
+      const res = await fetch('/api/admin/crear-proveedor-urgente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoProveedorForm)
+      })
+      const data = await res.json()
+      if (data.error) { alert('Error: ' + data.error); setGuardandoNuevoProveedor(false); return }
+
+      const { proveedor: prov, unidad, conductor: cond } = data
+      const nuevasAsig = [...asignacionesForm]
+      nuevasAsig[0] = {
+        ...nuevasAsig[0],
+        proveedor_id: prov.id,
+        unidad_id: unidad?.id || '',
+        conductor_id: cond?.id || '',
+        unidades_proveedor: unidad ? [unidad] : [],
+        conductores_proveedor: cond ? [cond] : [],
+      }
+      setAsignacionesForm(nuevasAsig)
+      setProveedoresHomologados(prev => [...prev, { id: prov.id, razon_social: prov.razon_social + ' ⚠️ URGENTE', ruc: prov.ruc }])
+      setMostrarFormNuevoProveedor(false)
+      setNuevoProveedorForm({ ruc: '', razon_social: '', placa: '', conductor: '' })
+      setRucUrgente('')
+    } catch (e: any) {
+      alert('Error: ' + e.message)
+    }
+    setGuardandoNuevoProveedor(false)
+  }
+
+  const agregarUnidadAProveedor = async (idx: number, placa: string, proveedorId: string) => {
+    if (!placa.trim()) return
+    const { data: unidad } = await supabase.from('unidades').insert({
+      proveedor_id: proveedorId, placa: placa.toUpperCase(), activo: true, pendiente_revision: true,
+    }).select().single()
+    if (unidad) {
+      const nuevas = [...asignacionesForm]
+      nuevas[idx].unidades_proveedor = [...nuevas[idx].unidades_proveedor, unidad]
+      nuevas[idx].unidad_id = unidad.id
+      nuevas[idx].nueva_placa = ''
+      nuevas[idx].modo_nueva_unidad = false
+      setAsignacionesForm(nuevas)
+    }
+  }
+
+  const agregarConductorAProveedor = async (idx: number, nombre: string, proveedorId: string) => {
+    if (!nombre.trim()) return
+    const { data: conductor } = await supabase.from('conductores').insert({
+      proveedor_id: proveedorId, nombre_completo: nombre, activo: true, pendiente_revision: true,
+    }).select().single()
+    if (conductor) {
+      const nuevas = [...asignacionesForm]
+      nuevas[idx].conductores_proveedor = [...nuevas[idx].conductores_proveedor, conductor]
+      nuevas[idx].conductor_id = conductor.id
+      nuevas[idx].nuevo_conductor = ''
+      nuevas[idx].modo_nuevo_conductor = false
+      setAsignacionesForm(nuevas)
+    }
   }
 
   const suscribirSolicitud = (solicitudId: string) => {
@@ -163,19 +232,14 @@ export default function TransportePage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitud_unidad_status', filter: `solicitud_id=eq.${solicitudId}` },
         () => cargarAsignaciones(solicitudId))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'solicitudes_transporte', filter: `id=eq.${solicitudId}` },
-        (payload: any) => {
-          setSeleccionada((prev: any) => ({ ...prev, ...payload.new }))
-          seleccionadaRef.current = { ...seleccionadaRef.current, ...payload.new }
-        })
+        (payload: any) => { setSeleccionada((prev: any) => ({ ...prev, ...payload.new })); seleccionadaRef.current = { ...seleccionadaRef.current, ...payload.new } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'solicitud_historial', filter: `solicitud_id=eq.${solicitudId}` },
         async (payload: any) => {
           try {
             const { data: email } = await supabase.rpc('get_user_email', { user_id: payload.new.usuario_id })
             const entrada = { ...payload.new, email: email || '—' }
             setHistorial((prev: any) => prev.find((h: any) => h.id === entrada.id) ? prev : [...prev, entrada])
-          } catch {
-            setHistorial((prev: any) => [...prev, { ...payload.new, email: '—' }])
-          }
+          } catch { setHistorial((prev: any) => [...prev, { ...payload.new, email: '—' }]) }
         })
       .subscribe()
     canalSolicitudRef.current = canal
@@ -187,6 +251,8 @@ export default function TransportePage() {
     setEmailOperativo('')
     setModoReasignar(false)
     setMostrarFormIncidencia(false)
+    setMostrarFormNuevoProveedor(false)
+    setRucUrgente('')
     setObservacionesTransporte(sol.observaciones_transporte || '')
     setCoordinadorTransporte(sol.coordinador_transporte || '')
     setHistorial([])
@@ -227,39 +293,24 @@ export default function TransportePage() {
 
     if (asigs && asigs.length > 0) {
       const forms = await Promise.all(asigs.map(async (a: any) => {
-        const { unidades, conductores } = a.proveedor_id
-          ? await cargarUnidadesConductores(a.proveedor_id)
-          : { unidades: [], conductores: [] }
-        return {
-          proveedor_id: a.proveedor_id || '',
-          unidad_id: a.unidad_id || '',
-          conductor_id: a.conductor_id || '',
-          unidades_proveedor: unidades,
-          conductores_proveedor: conductores
-        }
+        const { unidades, conductores } = a.proveedor_id ? await cargarUnidadesConductores(a.proveedor_id) : { unidades: [], conductores: [] }
+        return { proveedor_id: a.proveedor_id || '', unidad_id: a.unidad_id || '', conductor_id: a.conductor_id || '', unidades_proveedor: unidades, conductores_proveedor: conductores, nueva_placa: '', nuevo_conductor: '', modo_nueva_unidad: false, modo_nuevo_conductor: false }
       }))
       setAsignacionesForm(forms)
     }
   }
 
   const cargarHistorial = async (solicitudId: string) => {
-    const { data: hist } = await supabase.from('solicitud_historial').select('*')
-      .eq('solicitud_id', solicitudId).order('created_at', { ascending: true })
+    const { data: hist } = await supabase.from('solicitud_historial').select('*').eq('solicitud_id', solicitudId).order('created_at', { ascending: true })
     const histConEmails = await Promise.all((hist || []).map(async (h: any) => {
-      try {
-        const { data: email } = await supabase.rpc('get_user_email', { user_id: h.usuario_id })
-        return { ...h, email: email || '—' }
-      } catch { return { ...h, email: '—' } }
+      try { const { data: email } = await supabase.rpc('get_user_email', { user_id: h.usuario_id }); return { ...h, email: email || '—' } }
+      catch { return { ...h, email: '—' } }
     }))
     setHistorial(histConEmails)
   }
 
   const cargarIncidencias = async (solicitudId: string) => {
-    const { data } = await supabase
-      .from('solicitud_incidencias')
-      .select('*')
-      .eq('solicitud_id', solicitudId)
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('solicitud_incidencias').select('*').eq('solicitud_id', solicitudId).order('created_at', { ascending: false })
     setIncidencias(data || [])
   }
 
@@ -268,11 +319,8 @@ export default function TransportePage() {
     setGuardandoIncidencia(true)
     const { data: { session } } = await supabase.auth.getSession()
     await supabase.from('solicitud_incidencias').insert({
-      solicitud_id: seleccionada.id,
-      usuario_id: session?.user.id,
-      tipo: incidenciaForm.tipo,
-      descripcion: incidenciaForm.descripcion,
-      placa: incidenciaForm.placa || null,
+      solicitud_id: seleccionada.id, usuario_id: session?.user.id,
+      tipo: incidenciaForm.tipo, descripcion: incidenciaForm.descripcion, placa: incidenciaForm.placa || null,
     })
     setIncidenciaForm({ tipo: 'Otro', descripcion: '', placa: '' })
     setMostrarFormIncidencia(false)
@@ -286,6 +334,8 @@ export default function TransportePage() {
     if (campo === 'proveedor_id') {
       nuevas[idx].unidad_id = ''
       nuevas[idx].conductor_id = ''
+      nuevas[idx].modo_nueva_unidad = false
+      nuevas[idx].modo_nuevo_conductor = false
       if (valor) {
         const { unidades, conductores } = await cargarUnidadesConductores(valor)
         nuevas[idx].unidades_proveedor = unidades
@@ -302,11 +352,8 @@ export default function TransportePage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session || !seleccionadaRef.current) return
     await supabase.from('solicitud_historial').insert({
-      solicitud_id: seleccionadaRef.current.id,
-      usuario_id: session.user.id,
-      estado_anterior: estadoAnterior,
-      estado_nuevo: estadoNuevo,
-      comentario: comentario || null,
+      solicitud_id: seleccionadaRef.current.id, usuario_id: session.user.id,
+      estado_anterior: estadoAnterior, estado_nuevo: estadoNuevo, comentario: comentario || null,
     })
   }
 
@@ -322,21 +369,15 @@ export default function TransportePage() {
 
     const { data: nuevasAsigs } = await supabase.from('solicitud_asignaciones').insert(
       asignacionesForm.map((a: any, idx: number) => ({
-        solicitud_id: seleccionada.id,
-        proveedor_id: a.proveedor_id,
-        unidad_id: a.unidad_id,
-        conductor_id: a.conductor_id,
-        orden: idx + 1,
+        solicitud_id: seleccionada.id, proveedor_id: a.proveedor_id,
+        unidad_id: a.unidad_id, conductor_id: a.conductor_id, orden: idx + 1,
       }))
     ).select()
 
     if (nuevasAsigs && nuevasAsigs.length > 0) {
       await supabase.from('solicitud_unidad_status').insert(
         nuevasAsigs.map((a: any, idx: number) => ({
-          solicitud_id: seleccionada.id,
-          asignacion_id: a.id,
-          orden: idx + 1,
-          status: 'Asignado',
+          solicitud_id: seleccionada.id, asignacion_id: a.id, orden: idx + 1, status: 'Asignado',
         }))
       )
     }
@@ -355,10 +396,8 @@ export default function TransportePage() {
       return `Unidad ${idx + 1}: ${proveedor?.razon_social || a.proveedor_id}`
     }).join(', ')
 
-    await registrarHistorial(
-      estadoAnterior, 'asignada',
-      esReasignacion ? `Reasignación — ${detalleAsignacion}` : `Asignación — ${detalleAsignacion}`
-    )
+    await registrarHistorial(estadoAnterior, 'asignada',
+      esReasignacion ? `Reasignación — ${detalleAsignacion}` : `Asignación — ${detalleAsignacion}`)
 
     setSeleccionada((prev: any) => ({ ...prev, estado: 'asignada', coordinador_transporte: coordinadorTransporte }))
     seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'asignada' }
@@ -372,61 +411,33 @@ export default function TransportePage() {
   const actualizarStatusUnidad = async (asignacionId: string, nuevoStatus: string) => {
     if (!nuevoStatus) return
     setGuardando(true)
-
     const statusAnterior = statusUnidadesRef.current[asignacionId] || 'Asignado'
     const ahora = new Date().toISOString()
     const esCompletado = nuevoStatus === 'Servicio completado'
-
-    const { data: existente } = await supabase.from('solicitud_unidad_status')
-      .select('id').eq('asignacion_id', asignacionId).single()
+    const { data: existente } = await supabase.from('solicitud_unidad_status').select('id').eq('asignacion_id', asignacionId).single()
 
     if (existente) {
-      await supabase.from('solicitud_unidad_status').update({
-        status: nuevoStatus,
-        fecha_entrega: esCompletado ? ahora : null,
-        updated_at: ahora,
-      }).eq('asignacion_id', asignacionId)
+      await supabase.from('solicitud_unidad_status').update({ status: nuevoStatus, fecha_entrega: esCompletado ? ahora : null, updated_at: ahora }).eq('asignacion_id', asignacionId)
     } else {
       const asig = asignacionesDB.find((a: any) => a.id === asignacionId)
-      await supabase.from('solicitud_unidad_status').insert({
-        solicitud_id: seleccionada.id,
-        asignacion_id: asignacionId,
-        orden: asig?.orden || 1,
-        status: nuevoStatus,
-        fecha_entrega: esCompletado ? ahora : null,
-      })
+      await supabase.from('solicitud_unidad_status').insert({ solicitud_id: seleccionada.id, asignacion_id: asignacionId, orden: asig?.orden || 1, status: nuevoStatus, fecha_entrega: esCompletado ? ahora : null })
     }
 
-    // Registrar historial por cada cambio
     const asig = asignacionesDB.find((a: any) => a.id === asignacionId)
     const placa = asig?.unidades?.placa || `Unidad ${asig?.orden || ''}`
-    await registrarHistorial(
-      statusAnterior,
-      nuevoStatus,
-      `${placa}: ${statusAnterior} → ${nuevoStatus}`
-    )
+    await registrarHistorial(statusAnterior, nuevoStatus, `${placa}: ${statusAnterior} → ${nuevoStatus}`)
 
     const nuevoStatusMap = { ...statusUnidadesRef.current, [asignacionId]: nuevoStatus }
     setStatusUnidades(nuevoStatusMap)
     statusUnidadesRef.current = nuevoStatusMap
 
-    const todasCompletadas = asignacionesDB.length > 0 &&
-      asignacionesDB.every((a: any) => nuevoStatusMap[a.id] === 'Servicio completado')
+    const todasCompletadas = asignacionesDB.length > 0 && asignacionesDB.every((a: any) => nuevoStatusMap[a.id] === 'Servicio completado')
 
     if (todasCompletadas) {
       const fechaCulminacion = new Date()
       const deadline = new Date(fechaCulminacion.getTime() + 48 * 60 * 60 * 1000)
-      await supabase.from('solicitudes_transporte').update({
-        estado: 'entregada',
-        fecha_entrega: fechaCulminacion.toISOString(),
-        fecha_culminacion: fechaCulminacion.toISOString(),
-        deadline_facturacion: deadline.toISOString(),
-      }).eq('id', seleccionada.id)
-      await registrarHistorial(
-        seleccionadaRef.current?.estado || 'asignada',
-        'entregada',
-        'Todas las unidades completaron el servicio'
-      )
+      await supabase.from('solicitudes_transporte').update({ estado: 'entregada', fecha_entrega: fechaCulminacion.toISOString(), fecha_culminacion: fechaCulminacion.toISOString(), deadline_facturacion: deadline.toISOString() }).eq('id', seleccionada.id)
+      await registrarHistorial(seleccionadaRef.current?.estado || 'asignada', 'entregada', 'Todas las unidades completaron el servicio')
       setSeleccionada((prev: any) => ({ ...prev, estado: 'entregada', fecha_culminacion: fechaCulminacion.toISOString() }))
       seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'entregada' }
       await cargarSolicitudes()
@@ -445,13 +456,7 @@ export default function TransportePage() {
     if (!error) {
       const ahora = new Date()
       const deadline = new Date(ahora.getTime() + 48 * 60 * 60 * 1000)
-      await supabase.from('solicitudes_transporte').update({
-        evidencia_url: ruta,
-        estado: 'entregada',
-        fecha_entrega: ahora.toISOString(),
-        fecha_culminacion: ahora.toISOString(),
-        deadline_facturacion: deadline.toISOString(),
-      }).eq('id', seleccionada.id)
+      await supabase.from('solicitudes_transporte').update({ evidencia_url: ruta, estado: 'entregada', fecha_entrega: ahora.toISOString(), fecha_culminacion: ahora.toISOString(), deadline_facturacion: deadline.toISOString() }).eq('id', seleccionada.id)
       await registrarHistorial(seleccionadaRef.current?.estado || 'asignada', 'entregada', 'Evidencia de entrega subida')
       setSeleccionada((prev: any) => ({ ...prev, evidencia_url: ruta, estado: 'entregada', fecha_entrega: ahora.toISOString() }))
       seleccionadaRef.current = { ...seleccionadaRef.current, estado: 'entregada' }
@@ -527,9 +532,7 @@ export default function TransportePage() {
               <div style={{ position: 'absolute', right: 0, top: '110%', width: '320px', background: 'white', borderRadius: '12px', border: '1px solid #E8ECF0', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', zIndex: 100 }}>
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>Notificaciones</p>
-                  {notificaciones.length > 0 && (
-                    <button onClick={marcarLeidas} style={{ fontSize: '11px', color: '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Marcar leídas</button>
-                  )}
+                  {notificaciones.length > 0 && <button onClick={marcarLeidas} style={{ fontSize: '11px', color: '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Marcar leídas</button>}
                 </div>
                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   {notificaciones.length === 0 ? (
@@ -641,14 +644,12 @@ export default function TransportePage() {
                   </span>
                 </div>
                 <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 16px' }}>Creada el {formatFecha(seleccionada.created_at, true)}</p>
-
                 <div style={{ background: '#F8F9FA', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#C41230', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
                     {emailOperativo ? emailOperativo.charAt(0).toUpperCase() : '?'}
                   </div>
                   <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>{emailOperativo || 'Sin operativo asignado'}</p>
                 </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: '#F8F9FA', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
                   {[
                     { label: 'Cliente', valor: seleccionada.clientes?.razon_social || seleccionada.consignatario || '—' },
@@ -667,7 +668,6 @@ export default function TransportePage() {
                     </div>
                   ))}
                 </div>
-
                 {servicioCompletado && seleccionada.fecha_culminacion && (
                   <div style={{ background: '#E8F5E9', borderRadius: '10px', padding: '12px 16px', marginBottom: '14px', border: '1px solid #A5D6A7' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -677,21 +677,17 @@ export default function TransportePage() {
                       </div>
                       <div>
                         <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '0 0 2px', textTransform: 'uppercase' }}>Deadline facturación (48h)</p>
-                        <p style={{ fontSize: '12px', fontWeight: 700, color: '#C41230', margin: 0 }}>
-                          {seleccionada.deadline_facturacion ? formatFecha(seleccionada.deadline_facturacion, true) : '—'}
-                        </p>
+                        <p style={{ fontSize: '12px', fontWeight: 700, color: '#C41230', margin: 0 }}>{seleccionada.deadline_facturacion ? formatFecha(seleccionada.deadline_facturacion, true) : '—'}</p>
                       </div>
                     </div>
                   </div>
                 )}
-
                 {seleccionada.observaciones && (
                   <div style={{ background: '#FFF3E0', borderRadius: '10px', padding: '12px 16px', marginBottom: '14px', border: '1px solid #FFCC80' }}>
                     <p style={{ fontSize: '10px', color: '#E65100', margin: '0 0 4px', fontWeight: 700, textTransform: 'uppercase' }}>Instrucciones del operativo</p>
                     <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>{seleccionada.observaciones}</p>
                   </div>
                 )}
-
                 {documentos.length > 0 && (
                   <div>
                     <p style={{ fontSize: '12px', fontWeight: 700, color: '#0F1923', marginBottom: '8px' }}>Documentos adjuntos</p>
@@ -714,9 +710,7 @@ export default function TransportePage() {
                     <span style={{ fontSize: '24px' }}>📦</span>
                     <div>
                       <p style={{ fontSize: '14px', fontWeight: 700, color: '#2E7D32', margin: '0 0 3px' }}>Servicio completado</p>
-                      <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>
-                        Culminado el {formatFecha(seleccionada.fecha_entrega, true)}.
-                      </p>
+                      <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>Culminado el {formatFecha(seleccionada.fecha_entrega, true)}.</p>
                     </div>
                   </div>
                   {seleccionada.evidencia_url && (
@@ -738,16 +732,102 @@ export default function TransportePage() {
                         {tieneAsignaciones ? 'Gestión de unidades' : 'Asignar unidades'}
                         <span style={{ fontSize: '11px', color: '#8A9BB0', fontWeight: 400, marginLeft: '6px' }}>({seleccionada.num_unidades || 1} requerida(s))</span>
                       </p>
-                      <p style={{ fontSize: '11px', color: '#2E7D32', margin: 0, fontWeight: 500 }}>✓ Solo proveedores homologados ({proveedoresHomologados.length})</p>
+                      <p style={{ fontSize: '11px', color: '#2E7D32', margin: 0, fontWeight: 500 }}>✓ Proveedores homologados ({proveedoresHomologados.length})</p>
                     </div>
                   </div>
-                  {tieneAsignaciones && !modoReasignar && !servicioCompletado && (
-                    <button onClick={() => setModoReasignar(true)}
-                      style={{ padding: '7px 16px', background: '#FFF3E0', color: '#E65100', border: '1px solid #FFCC80', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-                      Reasignar
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {mostrarForm && !servicioCompletado && (
+                      <button onClick={() => setMostrarFormNuevoProveedor(!mostrarFormNuevoProveedor)}
+                        style={{ padding: '7px 14px', background: mostrarFormNuevoProveedor ? '#F0F2F5' : '#FFEBEE', color: mostrarFormNuevoProveedor ? '#8A9BB0' : '#B71C1C', border: `1px solid ${mostrarFormNuevoProveedor ? '#E8ECF0' : '#EF9A9A'}`, borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                        {mostrarFormNuevoProveedor ? 'Cancelar' : '+ Proveedor urgente'}
+                      </button>
+                    )}
+                    {tieneAsignaciones && !modoReasignar && !servicioCompletado && (
+                      <button onClick={() => setModoReasignar(true)}
+                        style={{ padding: '7px 16px', background: '#FFF3E0', color: '#E65100', border: '1px solid #FFCC80', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                        Reasignar
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Formulario nuevo proveedor urgente */}
+                {mostrarFormNuevoProveedor && mostrarForm && (
+                  <div style={{ background: '#FFF5F5', borderRadius: '10px', padding: '16px', marginBottom: '16px', border: '2px solid #EF9A9A' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '16px' }}>🚨</span>
+                      <p style={{ fontSize: '13px', fontWeight: 700, color: '#B71C1C', margin: 0 }}>Registrar proveedor urgente</p>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 14px' }}>
+                      El proveedor quedará en estado <strong>pendiente urgente</strong> y el evaluador recibirá una alerta inmediata.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                      {/* RUC con validación SUNAT */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>RUC *</label>
+                        <div style={{ position: 'relative' }}>
+                          <input type="text" maxLength={11} value={nuevoProveedorForm.ruc}
+                            onChange={async (e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 11)
+                              setNuevoProveedorForm({ ...nuevoProveedorForm, ruc: val, razon_social: '' })
+                              setRucUrgente('')
+                              if (val.length === 11) {
+                                setRucUrgente('buscando')
+                                try {
+                                  const res = await fetch(`/api/validar-ruc?ruc=${val}`)
+                                  const data = await res.json()
+                                  if (data.nombre) {
+                                    setNuevoProveedorForm(prev => ({ ...prev, ruc: val, razon_social: data.nombre }))
+                                    setRucUrgente('ok')
+                                  } else {
+                                    setRucUrgente('error')
+                                  }
+                                } catch { setRucUrgente('error') }
+                              }
+                            }}
+                            placeholder="20xxxxxxxxx"
+                            style={{ width: '100%', padding: '8px 12px', paddingRight: '36px', border: `1.5px solid ${rucUrgente === 'ok' ? '#A5D6A7' : rucUrgente === 'error' ? '#EF9A9A' : '#E8ECF0'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
+                          <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px' }}>
+                            {rucUrgente === 'buscando' ? '⏳' : rucUrgente === 'ok' ? '✅' : rucUrgente === 'error' ? '❌' : ''}
+                          </span>
+                        </div>
+                        {rucUrgente === 'buscando' && <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '3px 0 0' }}>Consultando SUNAT...</p>}
+                        {rucUrgente === 'error' && <p style={{ fontSize: '10px', color: '#B71C1C', margin: '3px 0 0' }}>RUC no encontrado en SUNAT</p>}
+                      </div>
+
+                      {/* Razón social */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Razón social *</label>
+                        <input type="text" value={nuevoProveedorForm.razon_social}
+                          onChange={(e) => setNuevoProveedorForm({ ...nuevoProveedorForm, razon_social: e.target.value })}
+                          placeholder="Se llena automáticamente"
+                          style={{ width: '100%', padding: '8px 12px', border: `1.5px solid ${rucUrgente === 'ok' ? '#A5D6A7' : '#E8ECF0'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923', background: rucUrgente === 'ok' ? '#F1F8F1' : 'white' }} />
+                      </div>
+
+                      {/* Placa */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Placa *</label>
+                        <input type="text" value={nuevoProveedorForm.placa}
+                          onChange={(e) => setNuevoProveedorForm({ ...nuevoProveedorForm, placa: e.target.value })}
+                          placeholder="ABC-123"
+                          style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
+                      </div>
+
+                      {/* Conductor */}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Conductor *</label>
+                        <input type="text" value={nuevoProveedorForm.conductor}
+                          onChange={(e) => setNuevoProveedorForm({ ...nuevoProveedorForm, conductor: e.target.value })}
+                          placeholder="Nombre completo"
+                          style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
+                      </div>
+                    </div>
+                    <button onClick={crearProveedorUrgente} disabled={guardandoNuevoProveedor}
+                      style={{ padding: '9px 20px', background: '#B71C1C', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: guardandoNuevoProveedor ? 0.6 : 1 }}>
+                      {guardandoNuevoProveedor ? 'Registrando...' : '🚨 Registrar y usar este proveedor'}
+                    </button>
+                  </div>
+                )}
 
                 {tieneAsignaciones && !mostrarForm && (
                   <div>
@@ -782,9 +862,7 @@ export default function TransportePage() {
                               <select value="" onChange={(e) => { if (e.target.value) actualizarStatusUnidad(a.id, e.target.value) }} disabled={guardando}
                                 style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '12px', outline: 'none', background: 'white', cursor: 'pointer', color: '#0F1923' }}>
                                 <option value="">— Selecciona el nuevo estado —</option>
-                                {estadosDisponibles.map((est: string) => (
-                                  <option key={est} value={est}>{est}</option>
-                                ))}
+                                {estadosDisponibles.map((est: string) => <option key={est} value={est}>{est}</option>)}
                               </select>
                             </div>
                           )}
@@ -800,14 +878,12 @@ export default function TransportePage() {
                         </div>
                       )
                     })}
-
                     {seleccionada.coordinador_transporte && (
                       <div style={{ background: '#F8F9FA', borderRadius: '10px', padding: '12px 16px', marginBottom: '10px', border: '1px solid #E8ECF0' }}>
                         <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '0 0 3px', fontWeight: 700, textTransform: 'uppercase' }}>Coordinador</p>
                         <p style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: 0 }}>{seleccionada.coordinador_transporte}</p>
                       </div>
                     )}
-
                     {!servicioCompletado && (
                       <div style={{ marginTop: '14px' }}>
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: '#2E7D32', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
@@ -837,29 +913,71 @@ export default function TransportePage() {
                             ))}
                           </select>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                          <div>
-                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Placa *</label>
+
+                        {/* Placa */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                            <label style={{ fontSize: '11px', fontWeight: 600, color: '#8A9BB0', textTransform: 'uppercase' }}>Placa *</label>
+                            {asig.proveedor_id && (
+                              <button onClick={() => { const n = [...asignacionesForm]; n[idx].modo_nueva_unidad = !n[idx].modo_nueva_unidad; setAsignacionesForm(n) }}
+                                style={{ fontSize: '10px', color: '#1565C0', background: '#E3F2FD', border: 'none', borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                                {asig.modo_nueva_unidad ? 'Cancelar' : '+ Nueva placa'}
+                              </button>
+                            )}
+                          </div>
+                          {asig.modo_nueva_unidad ? (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <input type="text" value={asig.nueva_placa || ''} placeholder="Ej: ABC-123"
+                                onChange={(e) => { const n = [...asignacionesForm]; n[idx].nueva_placa = e.target.value; setAsignacionesForm(n) }}
+                                style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #90CAF9', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#0F1923' }} />
+                              <button onClick={() => agregarUnidadAProveedor(idx, asig.nueva_placa || '', asig.proveedor_id)}
+                                style={{ padding: '9px 16px', background: '#1565C0', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                                Agregar
+                              </button>
+                            </div>
+                          ) : (
                             <select value={asig.unidad_id} onChange={(e) => actualizarFormAsignacion(idx, 'unidad_id', e.target.value)}
                               disabled={!asig.proveedor_id}
                               style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', opacity: !asig.proveedor_id ? 0.5 : 1, color: '#0F1923' }}>
                               <option value="">Selecciona placa...</option>
                               {asig.unidades_proveedor.map((u: any) => (
-                                <option key={u.id} value={u.id}>{u.placa}</option>
+                                <option key={u.id} value={u.id}>{u.placa}{u.pendiente_revision ? ' ⚠️' : ''}</option>
                               ))}
                             </select>
+                          )}
+                        </div>
+
+                        {/* Conductor */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                            <label style={{ fontSize: '11px', fontWeight: 600, color: '#8A9BB0', textTransform: 'uppercase' }}>Conductor *</label>
+                            {asig.proveedor_id && (
+                              <button onClick={() => { const n = [...asignacionesForm]; n[idx].modo_nuevo_conductor = !n[idx].modo_nuevo_conductor; setAsignacionesForm(n) }}
+                                style={{ fontSize: '10px', color: '#1565C0', background: '#E3F2FD', border: 'none', borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                                {asig.modo_nuevo_conductor ? 'Cancelar' : '+ Nuevo conductor'}
+                              </button>
+                            )}
                           </div>
-                          <div>
-                            <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Conductor *</label>
+                          {asig.modo_nuevo_conductor ? (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <input type="text" value={asig.nuevo_conductor || ''} placeholder="Nombre completo"
+                                onChange={(e) => { const n = [...asignacionesForm]; n[idx].nuevo_conductor = e.target.value; setAsignacionesForm(n) }}
+                                style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #90CAF9', borderRadius: '8px', fontSize: '13px', outline: 'none', color: '#0F1923' }} />
+                              <button onClick={() => agregarConductorAProveedor(idx, asig.nuevo_conductor || '', asig.proveedor_id)}
+                                style={{ padding: '9px 16px', background: '#1565C0', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                                Agregar
+                              </button>
+                            </div>
+                          ) : (
                             <select value={asig.conductor_id} onChange={(e) => actualizarFormAsignacion(idx, 'conductor_id', e.target.value)}
                               disabled={!asig.proveedor_id}
                               style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', opacity: !asig.proveedor_id ? 0.5 : 1, color: '#0F1923' }}>
                               <option value="">Selecciona conductor...</option>
                               {asig.conductores_proveedor.map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.nombre_completo}</option>
+                                <option key={c.id} value={c.id}>{c.nombre_completo}{c.pendiente_revision ? ' ⚠️' : ''}</option>
                               ))}
                             </select>
-                          </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -913,8 +1031,6 @@ export default function TransportePage() {
                     {mostrarFormIncidencia ? 'Cancelar' : '+ Agregar incidencia'}
                   </button>
                 </div>
-
-                {/* Formulario nueva incidencia */}
                 {mostrarFormIncidencia && (
                   <div style={{ background: '#FFF8F0', borderRadius: '10px', padding: '16px', marginBottom: '16px', border: '1px solid #FFCC80' }}>
                     <p style={{ fontSize: '12px', fontWeight: 700, color: '#E65100', margin: '0 0 12px', textTransform: 'uppercase' }}>Nueva incidencia</p>
@@ -928,18 +1044,15 @@ export default function TransportePage() {
                       </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Placa afectada (opcional)</label>
-                        <input type="text" value={incidenciaForm.placa}
-                          onChange={(e) => setIncidenciaForm({ ...incidenciaForm, placa: e.target.value })}
+                        <input type="text" value={incidenciaForm.placa} onChange={(e) => setIncidenciaForm({ ...incidenciaForm, placa: e.target.value })}
                           placeholder="Ej: ABC-123"
                           style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
                       </div>
                     </div>
                     <div style={{ marginBottom: '12px' }}>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Descripción *</label>
-                      <textarea value={incidenciaForm.descripcion}
-                        onChange={(e) => setIncidenciaForm({ ...incidenciaForm, descripcion: e.target.value })}
-                        placeholder="Describe la incidencia con el mayor detalle posible..."
-                        rows={3}
+                      <textarea value={incidenciaForm.descripcion} onChange={(e) => setIncidenciaForm({ ...incidenciaForm, descripcion: e.target.value })}
+                        placeholder="Describe la incidencia..." rows={3}
                         style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'vertical' as const, boxSizing: 'border-box' as const, color: '#0F1923', fontFamily: 'inherit' }} />
                     </div>
                     <button onClick={guardarIncidencia} disabled={guardandoIncidencia || !incidenciaForm.descripcion.trim()}
@@ -948,8 +1061,6 @@ export default function TransportePage() {
                     </button>
                   </div>
                 )}
-
-                {/* Lista incidencias */}
                 {incidencias.length === 0 && !mostrarFormIncidencia ? (
                   <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0, textAlign: 'center', padding: '12px 0' }}>Sin incidencias registradas</p>
                 ) : incidencias.map((inc: any, i: number) => {
@@ -987,9 +1098,7 @@ export default function TransportePage() {
                       {i < historial.length - 1 && (
                         <div style={{ position: 'absolute', left: '11px', top: '26px', width: '2px', height: 'calc(100% - 10px)', background: '#E8ECF0' }} />
                       )}
-                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#F8F9FA', border: '2px solid #E8ECF0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', zIndex: 1 }}>
-                        🔄
-                      </div>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#F8F9FA', border: '2px solid #E8ECF0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', zIndex: 1 }}>🔄</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', flexWrap: 'wrap' as const }}>
                           <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: bAnterior.bg, color: bAnterior.color }}>{bAnterior.texto}</span>
