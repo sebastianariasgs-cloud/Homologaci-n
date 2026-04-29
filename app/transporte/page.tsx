@@ -128,9 +128,19 @@ export default function TransportePage() {
   }
 
   const cargarProveedoresHomologados = async () => {
-    const { data: provs } = await supabase
-      .from('proveedores').select('id, razon_social, ruc').eq('estado', 'homologado').order('razon_social')
-    setProveedoresHomologados(provs || [])
+    const { data: homologados } = await supabase
+      .from('proveedores').select('id, razon_social, ruc, urgente')
+      .eq('estado', 'homologado').order('razon_social')
+
+    const { data: urgentes } = await supabase
+      .from('proveedores').select('id, razon_social, ruc, urgente')
+      .eq('estado', 'pendiente').eq('urgente', true).order('razon_social')
+
+    const todos = [
+      ...(homologados || []),
+      ...(urgentes || []).map((p: any) => ({ ...p, razon_social: p.razon_social + ' ⚠️ URGENTE' })),
+    ]
+    setProveedoresHomologados(todos)
   }
 
   const cargarNotificaciones = async (uid: string) => {
@@ -157,7 +167,20 @@ export default function TransportePage() {
       supabase.from('unidades').select('id, placa, pendiente_revision').eq('proveedor_id', proveedorId).eq('activo', true),
       supabase.from('conductores').select('id, nombre_completo, pendiente_revision').eq('proveedor_id', proveedorId).eq('activo', true),
     ])
-    return { unidades: units || [], conductores: conds || [] }
+
+    // Obtener asignaciones en servicios activos (no entregados)
+    const { data: asignacionesActivas } = await supabase
+      .from('solicitud_asignaciones')
+      .select('unidad_id, conductor_id, solicitudes_transporte!inner(estado)')
+      .neq('solicitudes_transporte.estado', 'entregada')
+
+    const unidadesEnServicio = new Set((asignacionesActivas || []).map((a: any) => a.unidad_id))
+    const conductoresEnServicio = new Set((asignacionesActivas || []).map((a: any) => a.conductor_id))
+
+    return {
+      unidades: (units || []).map((u: any) => ({ ...u, en_servicio: unidadesEnServicio.has(u.id) })),
+      conductores: (conds || []).map((c: any) => ({ ...c, en_servicio: conductoresEnServicio.has(c.id) })),
+    }
   }
 
   const crearProveedorUrgente = async () => {
@@ -182,11 +205,11 @@ export default function TransportePage() {
         proveedor_id: prov.id,
         unidad_id: unidad?.id || '',
         conductor_id: cond?.id || '',
-        unidades_proveedor: unidad ? [unidad] : [],
-        conductores_proveedor: cond ? [cond] : [],
+        unidades_proveedor: unidad ? [{ ...unidad, en_servicio: false }] : [],
+        conductores_proveedor: cond ? [{ ...cond, en_servicio: false }] : [],
       }
       setAsignacionesForm(nuevasAsig)
-      setProveedoresHomologados(prev => [...prev, { id: prov.id, razon_social: prov.razon_social + ' ⚠️ URGENTE', ruc: prov.ruc }])
+      setProveedoresHomologados(prev => [...prev, { id: prov.id, razon_social: prov.razon_social + ' ⚠️ URGENTE', ruc: prov.ruc, urgente: true }])
       setMostrarFormNuevoProveedor(false)
       setNuevoProveedorForm({ ruc: '', razon_social: '', placa: '', conductor: '' })
       setRucUrgente('')
@@ -203,7 +226,7 @@ export default function TransportePage() {
     }).select().single()
     if (unidad) {
       const nuevas = [...asignacionesForm]
-      nuevas[idx].unidades_proveedor = [...nuevas[idx].unidades_proveedor, unidad]
+      nuevas[idx].unidades_proveedor = [...nuevas[idx].unidades_proveedor, { ...unidad, en_servicio: false }]
       nuevas[idx].unidad_id = unidad.id
       nuevas[idx].nueva_placa = ''
       nuevas[idx].modo_nueva_unidad = false
@@ -218,7 +241,7 @@ export default function TransportePage() {
     }).select().single()
     if (conductor) {
       const nuevas = [...asignacionesForm]
-      nuevas[idx].conductores_proveedor = [...nuevas[idx].conductores_proveedor, conductor]
+      nuevas[idx].conductores_proveedor = [...nuevas[idx].conductores_proveedor, { ...conductor, en_servicio: false }]
       nuevas[idx].conductor_id = conductor.id
       nuevas[idx].nuevo_conductor = ''
       nuevas[idx].modo_nuevo_conductor = false
@@ -762,7 +785,6 @@ export default function TransportePage() {
                       El proveedor quedará en estado <strong>pendiente urgente</strong> y el evaluador recibirá una alerta inmediata.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                      {/* RUC con validación SUNAT */}
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>RUC *</label>
                         <div style={{ position: 'relative' }}>
@@ -779,9 +801,7 @@ export default function TransportePage() {
                                   if (data.nombre) {
                                     setNuevoProveedorForm(prev => ({ ...prev, ruc: val, razon_social: data.nombre }))
                                     setRucUrgente('ok')
-                                  } else {
-                                    setRucUrgente('error')
-                                  }
+                                  } else setRucUrgente('error')
                                 } catch { setRucUrgente('error') }
                               }
                             }}
@@ -794,8 +814,6 @@ export default function TransportePage() {
                         {rucUrgente === 'buscando' && <p style={{ fontSize: '10px', color: '#8A9BB0', margin: '3px 0 0' }}>Consultando SUNAT...</p>}
                         {rucUrgente === 'error' && <p style={{ fontSize: '10px', color: '#B71C1C', margin: '3px 0 0' }}>RUC no encontrado en SUNAT</p>}
                       </div>
-
-                      {/* Razón social */}
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Razón social *</label>
                         <input type="text" value={nuevoProveedorForm.razon_social}
@@ -803,8 +821,6 @@ export default function TransportePage() {
                           placeholder="Se llena automáticamente"
                           style={{ width: '100%', padding: '8px 12px', border: `1.5px solid ${rucUrgente === 'ok' ? '#A5D6A7' : '#E8ECF0'}`, borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923', background: rucUrgente === 'ok' ? '#F1F8F1' : 'white' }} />
                       </div>
-
-                      {/* Placa */}
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Placa *</label>
                         <input type="text" value={nuevoProveedorForm.placa}
@@ -812,8 +828,6 @@ export default function TransportePage() {
                           placeholder="ABC-123"
                           style={{ width: '100%', padding: '8px 12px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const, color: '#0F1923' }} />
                       </div>
-
-                      {/* Conductor */}
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '4px', textTransform: 'uppercase' }}>Conductor *</label>
                         <input type="text" value={nuevoProveedorForm.conductor}
@@ -907,7 +921,7 @@ export default function TransportePage() {
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#8A9BB0', marginBottom: '5px', textTransform: 'uppercase' }}>Empresa *</label>
                           <select value={asig.proveedor_id} onChange={(e) => actualizarFormAsignacion(idx, 'proveedor_id', e.target.value)}
                             style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', color: '#0F1923' }}>
-                            <option value="">Selecciona un proveedor homologado...</option>
+                            <option value="">Selecciona un proveedor...</option>
                             {proveedoresHomologados.map((p: any) => (
                               <option key={p.id} value={p.id}>{p.razon_social} — RUC {p.ruc}</option>
                             ))}
@@ -941,7 +955,9 @@ export default function TransportePage() {
                               style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', opacity: !asig.proveedor_id ? 0.5 : 1, color: '#0F1923' }}>
                               <option value="">Selecciona placa...</option>
                               {asig.unidades_proveedor.map((u: any) => (
-                                <option key={u.id} value={u.id}>{u.placa}{u.pendiente_revision ? ' ⚠️' : ''}</option>
+                                <option key={u.id} value={u.id} disabled={u.en_servicio}>
+                                  {u.placa}{u.pendiente_revision ? ' ⚠️' : ''}{u.en_servicio ? ' 🔴 En servicio' : ''}
+                                </option>
                               ))}
                             </select>
                           )}
@@ -974,7 +990,9 @@ export default function TransportePage() {
                               style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', outline: 'none', background: 'white', opacity: !asig.proveedor_id ? 0.5 : 1, color: '#0F1923' }}>
                               <option value="">Selecciona conductor...</option>
                               {asig.conductores_proveedor.map((c: any) => (
-                                <option key={c.id} value={c.id}>{c.nombre_completo}{c.pendiente_revision ? ' ⚠️' : ''}</option>
+                                <option key={c.id} value={c.id} disabled={c.en_servicio}>
+                                  {c.nombre_completo}{c.pendiente_revision ? ' ⚠️' : ''}{c.en_servicio ? ' 🔴 En servicio' : ''}
+                                </option>
                               ))}
                             </select>
                           )}

@@ -132,6 +132,7 @@ function EvaluadorContent() {
   const router = useRouter()
   const [vista, setVista] = useState<'dashboard' | 'evaluacion'>('dashboard')
   const [proveedores, setProveedores] = useState<any[]>([])
+  const [proveedoresConPendientes, setProveedoresConPendientes] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [seleccionado, setSeleccionado] = useState<any>(null)
   const [documentos, setDocumentos] = useState<any[]>([])
@@ -168,12 +169,25 @@ function EvaluadorContent() {
   const cargarProveedores = async () => {
     const { data } = await supabase.from('proveedores').select('*').order('created_at', { ascending: false })
     setProveedores(data || [])
+
+    // Cargar proveedores con unidades o conductores pendientes de revisión
+    const { data: unidadesPendientes } = await supabase
+      .from('unidades').select('proveedor_id').eq('pendiente_revision', true).eq('activo', true)
+    const { data: conductoresPendientes } = await supabase
+      .from('conductores').select('proveedor_id').eq('pendiente_revision', true).eq('activo', true)
+
+    const idsPendientes = new Set<string>([
+      ...(unidadesPendientes || []).map((u: any) => u.proveedor_id),
+      ...(conductoresPendientes || []).map((c: any) => c.proveedor_id),
+    ])
+    setProveedoresConPendientes(idsPendientes)
     setLoading(false)
   }
 
   const pendientes = proveedores.filter((p: any) => p.estado === 'pendiente')
   const homologados = proveedores.filter((p: any) => p.estado === 'homologado')
   const rechazados = proveedores.filter((p: any) => p.estado === 'rechazado')
+  const conNuevosElementos = proveedores.filter((p: any) => proveedoresConPendientes.has(p.id) && p.estado === 'homologado')
 
   const proveedoresFiltrados = proveedores.filter((p: any) => {
     const matchBusqueda = busqueda === '' || p.razon_social.toLowerCase().includes(busqueda.toLowerCase()) || p.ruc.includes(busqueda)
@@ -208,6 +222,17 @@ function EvaluadorContent() {
       const { data: tipo } = await supabase.from('tipos_proveedor').select('nombre').eq('id', prov.tipo_id).single()
       setTipoProveedor(tipo?.nombre || 'No especificado')
     } else setTipoProveedor('No especificado')
+  }
+
+  const marcarElementoRevisado = async (tabla: string, id: string) => {
+    await supabase.from(tabla).update({ pendiente_revision: false }).eq('id', id)
+    if (tabla === 'unidades') {
+      setUnidades(prev => prev.map((u: any) => u.id === id ? { ...u, pendiente_revision: false } : u))
+    } else {
+      setConductores(prev => prev.map((c: any) => c.id === id ? { ...c, pendiente_revision: false } : c))
+    }
+    // Actualizar el set de pendientes
+    await cargarProveedores()
   }
 
   const verDocumento = async (url: string) => {
@@ -276,7 +301,9 @@ function EvaluadorContent() {
       {/* NAV */}
       <nav style={{ background: '#0F1923', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)' }} />
+          <a href="/evaluador">
+            <img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} />
+          </a>
           <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)' }} />
           <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Panel del evaluador</span>
         </div>
@@ -288,9 +315,9 @@ function EvaluadorContent() {
           <button onClick={() => setVista('evaluacion')}
             style={{ fontSize: '12px', fontWeight: 600, padding: '6px 14px', borderRadius: '7px', border: 'none', cursor: 'pointer', background: vista === 'evaluacion' ? 'rgba(255,255,255,0.15)' : 'transparent', color: vista === 'evaluacion' ? 'white' : 'rgba(255,255,255,0.5)', position: 'relative' }}>
             Evaluación
-            {pendientes.length > 0 && (
+            {(pendientes.length > 0 || conNuevosElementos.length > 0) && (
               <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '16px', height: '16px', background: '#C41230', borderRadius: '50%', fontSize: '9px', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                {pendientes.length}
+                {pendientes.length + conNuevosElementos.length}
               </span>
             )}
           </button>
@@ -321,7 +348,7 @@ function EvaluadorContent() {
               { label: 'Total proveedores', valor: proveedores.length, icon: '🏢', bg: 'white', color: '#0F1923', border: '#E8ECF0' },
               { label: 'Pendientes', valor: pendientes.length, icon: '⏳', bg: '#FFF3E0', color: '#E65100', border: '#FFCC80' },
               { label: 'Homologados', valor: homologados.length, icon: '✅', bg: '#E8F5E9', color: '#2E7D32', border: '#A5D6A7' },
-              { label: 'Rechazados', valor: rechazados.length, icon: '❌', bg: '#FFEBEE', color: '#B71C1C', border: '#EF9A9A' },
+              { label: 'Nuevos elementos', valor: conNuevosElementos.length, icon: '⚠️', bg: '#FFF8E1', color: '#F57F17', border: '#FFE082' },
             ].map((kpi: any) => (
               <div key={kpi.label} style={{ background: kpi.bg, borderRadius: '14px', padding: '20px', border: `1px solid ${kpi.border}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <span style={{ fontSize: '22px' }}>{kpi.icon}</span>
@@ -331,7 +358,35 @@ function EvaluadorContent() {
             ))}
           </div>
 
-          {/* Pendientes urgentes */}
+          {/* Proveedores con nuevos elementos */}
+          {conNuevosElementos.length > 0 && (
+            <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #FFE082', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: '20px' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #FFF8E1', background: '#FFF8E1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '16px' }}>⚠️</span>
+                  <p style={{ fontSize: '13px', fontWeight: 700, color: '#F57F17', margin: 0 }}>Proveedores homologados con nuevas unidades/conductores ({conNuevosElementos.length})</p>
+                </div>
+              </div>
+              {conNuevosElementos.map((p: any, i: number) => (
+                <div key={p.id}
+                  onClick={() => { seleccionarProveedor(p); setVista('evaluacion') }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: i < conNuevosElementos.length - 1 ? '1px solid #F5F7FA' : 'none', cursor: 'pointer', background: 'white' }}
+                  onMouseEnter={(e: any) => e.currentTarget.style.background = '#F5F7FA'}
+                  onMouseLeave={(e: any) => e.currentTarget.style.background = 'white'}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923', margin: '0 0 3px' }}>{p.razon_social}</p>
+                      <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '2px 7px', borderRadius: '20px', border: '1px solid #FFE082' }}>⚠️ NUEVO</span>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>RUC {p.ruc}</p>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#F57F17', fontWeight: 600 }}>Revisar →</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pendientes */}
           {pendientes.length > 0 && (
             <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', marginBottom: '20px' }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FFF3E0' }}>
@@ -351,7 +406,10 @@ function EvaluadorContent() {
                   onMouseEnter={(e: any) => e.currentTarget.style.background = '#F5F7FA'}
                   onMouseLeave={(e: any) => e.currentTarget.style.background = 'white'}>
                   <div>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923', margin: '0 0 3px' }}>{p.razon_social}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923', margin: '0 0 3px' }}>{p.razon_social}</p>
+                      {p.urgente && <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFEBEE', color: '#B71C1C', padding: '2px 7px', borderRadius: '20px', border: '1px solid #EF9A9A' }}>🚨 URGENTE</span>}
+                    </div>
                     <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>RUC {p.ruc} · Registrado {new Date(p.created_at).toLocaleDateString('es-PE')}</p>
                   </div>
                   <span style={{ fontSize: '12px', color: '#E65100', fontWeight: 600 }}>Revisar →</span>
@@ -368,7 +426,7 @@ function EvaluadorContent() {
             </div>
           )}
 
-          {/* Últimos homologados */}
+          {/* Últimos homologados y rechazados */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F2F5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -384,7 +442,12 @@ function EvaluadorContent() {
                   onMouseEnter={(e: any) => e.currentTarget.style.background = '#F5F7FA'}
                   onMouseLeave={(e: any) => e.currentTarget.style.background = 'white'}>
                   <div>
-                    <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: '0 0 2px' }}>{p.razon_social}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: '0 0 2px' }}>{p.razon_social}</p>
+                      {proveedoresConPendientes.has(p.id) && (
+                        <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '2px 6px', borderRadius: '20px', border: '1px solid #FFE082' }}>⚠️ Nuevo</span>
+                      )}
+                    </div>
                     <p style={{ fontSize: '11px', color: '#8A9BB0', margin: 0 }}>RUC {p.ruc}</p>
                   </div>
                   <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: '#E8F5E9', color: '#2E7D32' }}>Homologado</span>
@@ -443,14 +506,25 @@ function EvaluadorContent() {
                 <p style={{ fontSize: '12px', color: '#8A9BB0', textAlign: 'center', padding: '24px', margin: 0 }}>Sin resultados</p>
               ) : proveedoresFiltrados.map((prov: any) => {
                 const badge = estadoBadge[prov.estado] || estadoBadge.pendiente
+                const tieneNuevos = proveedoresConPendientes.has(prov.id)
                 return (
                   <div key={prov.id} onClick={() => seleccionarProveedor(prov)}
-                    style={{ padding: '12px 16px', borderBottom: '1px solid #F5F7FA', cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : 'white', borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : '3px solid transparent' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: '0 0 2px' }}>{prov.razon_social}</p>
+                    style={{ padding: '12px 16px', borderBottom: '1px solid #F5F7FA', cursor: 'pointer', background: seleccionado?.id === prov.id ? '#FEF2F2' : tieneNuevos ? '#FFFDE7' : 'white', borderLeft: seleccionado?.id === prov.id ? '3px solid #C41230' : tieneNuevos ? '3px solid #F57F17' : '3px solid transparent' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: 0 }}>{prov.razon_social}</p>
+                      {prov.urgente && <span style={{ fontSize: '8px', fontWeight: 700, background: '#FFEBEE', color: '#B71C1C', padding: '1px 5px', borderRadius: '4px' }}>🚨</span>}
+                    </div>
                     <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 6px' }}>RUC {prov.ruc}</p>
-                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
-                      {estadoTexto[prov.estado] || 'Pendiente'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: badge.bg, color: badge.color }}>
+                        {estadoTexto[prov.estado] || 'Pendiente'}
+                      </span>
+                      {tieneNuevos && (
+                        <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '2px 7px', borderRadius: '20px', border: '1px solid #FFE082' }}>
+                          ⚠️ Nuevo
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -474,7 +548,11 @@ function EvaluadorContent() {
                 <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', padding: '20px 24px', marginBottom: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
                     <div>
-                      <h2 style={{ fontSize: '16px', fontWeight: 800, color: '#0F1923', margin: '0 0 4px' }}>{seleccionado.razon_social}</h2>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                        <h2 style={{ fontSize: '16px', fontWeight: 800, color: '#0F1923', margin: 0 }}>{seleccionado.razon_social}</h2>
+                        {seleccionado.urgente && <span style={{ fontSize: '10px', fontWeight: 700, background: '#FFEBEE', color: '#B71C1C', padding: '3px 10px', borderRadius: '20px', border: '1px solid #EF9A9A' }}>🚨 URGENTE</span>}
+                        {proveedoresConPendientes.has(seleccionado.id) && <span style={{ fontSize: '10px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '3px 10px', borderRadius: '20px', border: '1px solid #FFE082' }}>⚠️ Nuevos elementos</span>}
+                      </div>
                       <p style={{ fontSize: '12px', color: '#8A9BB0', margin: 0 }}>RUC {seleccionado.ruc}</p>
                     </div>
                     <span style={{ fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px', background: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).bg, color: (estadoBadge[seleccionado.estado] || estadoBadge.pendiente).color }}>
@@ -520,7 +598,7 @@ function EvaluadorContent() {
                 {/* Documentos empresa */}
                 {documentos.length > 0 && (
                   <div style={{ background: 'white', borderRadius: '14px', border: '1px solid #E8ECF0', padding: '18px 24px', marginBottom: '14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                    <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', marginBottom: '14px', margin: '0 0 14px' }}>📄 Documentos de la empresa</h3>
+                    <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: '0 0 14px' }}>📄 Documentos de la empresa</h3>
                     {documentos.map((doc: any) => (
                       <FilaDoc key={doc.id} doc={doc} tabla="documentos"
                         tieneVencimiento={DOCS_CON_VENCIMIENTO.includes(doc.nombre)}
@@ -536,11 +614,22 @@ function EvaluadorContent() {
                     <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: '0 0 14px' }}>👤 Conductores</h3>
                     {conductores.map((conductor: any) => (
                       <div key={conductor.id} style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', padding: '8px 12px', background: '#F8F9FA', borderRadius: '8px' }}>
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#C41230', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
-                            {conductor.nombre_completo.charAt(0)}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', padding: '8px 12px', background: conductor.pendiente_revision ? '#FFF8E1' : '#F8F9FA', borderRadius: '8px', border: conductor.pendiente_revision ? '1px solid #FFE082' : '1px solid transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#C41230', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
+                              {conductor.nombre_completo.charAt(0)}
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923' }}>{conductor.nombre_completo}</span>
+                              {conductor.pendiente_revision && <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '2px 7px', borderRadius: '20px', border: '1px solid #FFE082', marginLeft: '8px' }}>⚠️ NUEVO</span>}
+                            </div>
                           </div>
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923' }}>{conductor.nombre_completo}</span>
+                          {conductor.pendiente_revision && (
+                            <button onClick={() => marcarElementoRevisado('conductores', conductor.id)}
+                              style={{ fontSize: '10px', color: '#2E7D32', background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                              ✓ Marcar revisado
+                            </button>
+                          )}
                         </div>
                         {docsConductor.filter((d: any) => d.conductor_id === conductor.id).map((doc: any) => (
                           <FilaDoc key={doc.id} doc={doc} tabla="documentos_conductor"
@@ -562,9 +651,20 @@ function EvaluadorContent() {
                     <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#0F1923', margin: '0 0 14px' }}>🚛 Unidades vehiculares</h3>
                     {unidades.map((unidad: any) => (
                       <div key={unidad.id} style={{ marginBottom: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', padding: '8px 12px', background: '#F8F9FA', borderRadius: '8px' }}>
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#0F1923', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0 }}>🚛</div>
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923' }}>Placa: {unidad.placa}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', padding: '8px 12px', background: unidad.pendiente_revision ? '#FFF8E1' : '#F8F9FA', borderRadius: '8px', border: unidad.pendiente_revision ? '1px solid #FFE082' : '1px solid transparent' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#0F1923', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0 }}>🚛</div>
+                            <div>
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923' }}>Placa: {unidad.placa}</span>
+                              {unidad.pendiente_revision && <span style={{ fontSize: '9px', fontWeight: 700, background: '#FFF8E1', color: '#F57F17', padding: '2px 7px', borderRadius: '20px', border: '1px solid #FFE082', marginLeft: '8px' }}>⚠️ NUEVO</span>}
+                            </div>
+                          </div>
+                          {unidad.pendiente_revision && (
+                            <button onClick={() => marcarElementoRevisado('unidades', unidad.id)}
+                              style={{ fontSize: '10px', color: '#2E7D32', background: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                              ✓ Marcar revisado
+                            </button>
+                          )}
                         </div>
                         {docsUnidad.filter((d: any) => d.unidad_id === unidad.id).map((doc: any) => (
                           <FilaDoc key={doc.id} doc={doc} tabla="documentos_unidad"
