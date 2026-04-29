@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import BotonAdmin from '../components/BotonAdmin'
+import BotonHub from '../components/BotonHub'
 
 export default function ComercialPage() {
   const router = useRouter()
@@ -75,6 +76,7 @@ export default function ComercialPage() {
           <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Módulo de cotizaciones</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BotonHub />
           <BotonAdmin />
           <button onClick={() => router.push('/comercial/nueva')}
             style={{ background: '#C41230', color: 'white', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>

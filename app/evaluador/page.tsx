@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Notificaciones from '../components/Notificaciones'
 import BotonAdmin from '../components/BotonAdmin'
+import BotonHub from '../components/BotonHub'
 
 const DOCS_CON_VENCIMIENTO = [
   'SOAT',
@@ -322,6 +323,11 @@ function EvaluadorContent() {
             )}
           </button>
           <Notificaciones esEvaluador={true} />
+          <BotonHub />
+          <a href="/evaluador/usuarios"
+           style={{ fontSize: '12px', fontWeight: 600, color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '7px', padding: '6px 14px', textDecoration: 'none' }}>
+          👥 Usuarios
+          </a>
           <BotonAdmin />
           <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
             style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer' }}>

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import BotonAdmin from '../components/BotonAdmin'
+import BotonHub from '../components/BotonHub'
 
 const estadoBadgeMap: { [key: string]: { bg: string, color: string, texto: string } } = {
   pendiente:   { bg: '#FFF3E0', color: '#E65100', texto: 'Pendiente' },
@@ -571,6 +572,7 @@ export default function TransportePage() {
               </div>
             )}
           </div>
+          <BotonHub />
           <BotonAdmin />
           <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
             style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer' }}>

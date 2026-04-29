@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import BotonAdmin from '../components/BotonAdmin'
+import BotonHub from '../components/BotonHub'
 
 const ESTADOS_UNIDAD_ORDEN = [
   'Asignado',
@@ -201,6 +202,7 @@ export default function OperativoPage() {
             style={{ background: '#C41230', color: 'white', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
             + Nueva solicitud
           </button>
+          <BotonHub />
           <BotonAdmin />
           <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
             style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
