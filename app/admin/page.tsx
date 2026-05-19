@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import BotonHub from '../components/BotonHub'
 
 export default function AdminPage() {
   const router = useRouter()

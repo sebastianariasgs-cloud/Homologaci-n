@@ -4,29 +4,38 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const ROLES = [
-  { value: 'proveedor', label: 'Proveedor' },
-  { value: 'evaluador', label: 'Evaluador' },
-  { value: 'comercial', label: 'Comercial' },
-  { value: 'pricing', label: 'Pricing' },
-  { value: 'operativo_sli', label: 'Operativo SLI' },
-  { value: 'admin_operativo', label: 'Admin Operativo' },
-  { value: 'supervisor_sli', label: 'Supervisor SLI' },
-  { value: 'transporte', label: 'Transporte' },
-  { value: 'admin', label: 'Administrador' },
+  { value: 'proveedor',            label: 'Proveedor' },
+  { value: 'evaluador',            label: 'Evaluador' },
+  { value: 'comercial',            label: 'Comercial' },
+  { value: 'pricing',              label: 'Pricing' },
+  { value: 'operativo_sli',        label: 'Operativo SLI' },
+  { value: 'admin_operativo',      label: 'Admin Operativo' },
+  { value: 'supervisor_sli',       label: 'Supervisor SLI' },
+  { value: 'transporte',           label: 'Supervisor Transporte' },
+  { value: 'operativo_transporte', label: 'Operativo Transporte' },
+  { value: 'monitor',              label: 'Monitor' },
+  { value: 'admin',                label: 'Administrador' },
 ]
 
-const ROLES_INTERNOS = ['evaluador', 'comercial', 'pricing', 'operativo_sli', 'admin_operativo', 'supervisor_sli', 'transporte', 'admin']
+const ROLES_INTERNOS = [
+  'evaluador', 'comercial', 'pricing',
+  'operativo_sli', 'admin_operativo', 'supervisor_sli',
+  'transporte', 'operativo_transporte', 'monitor',
+  'admin',
+]
 
 const rolColors: Record<string, { bg: string, color: string }> = {
-  admin:           { bg: '#FFEBEE', color: '#B71C1C' },
-  proveedor:       { bg: '#E3F2FD', color: '#1565C0' },
-  evaluador:       { bg: '#F3E5F5', color: '#6A1B9A' },
-  comercial:       { bg: '#E8F5E9', color: '#2E7D32' },
-  pricing:         { bg: '#FFF3E0', color: '#E65100' },
-  transporte:      { bg: '#E0F7FA', color: '#00695C' },
-  operativo_sli:   { bg: '#FFF8E1', color: '#F57F17' },
-  admin_operativo: { bg: '#FCE4EC', color: '#880E4F' },
-  supervisor_sli:  { bg: '#E8EAF6', color: '#283593' },
+  admin:                { bg: '#FFEBEE', color: '#B71C1C' },
+  proveedor:            { bg: '#E3F2FD', color: '#1565C0' },
+  evaluador:            { bg: '#F3E5F5', color: '#6A1B9A' },
+  comercial:            { bg: '#E8F5E9', color: '#2E7D32' },
+  pricing:              { bg: '#FFF3E0', color: '#E65100' },
+  transporte:           { bg: '#E0F7FA', color: '#00695C' },
+  operativo_transporte: { bg: '#E3F2FD', color: '#1565C0' },
+  monitor:              { bg: '#E8F5E9', color: '#2E7D32' },
+  operativo_sli:        { bg: '#FFF8E1', color: '#F57F17' },
+  admin_operativo:      { bg: '#FCE4EC', color: '#880E4F' },
+  supervisor_sli:       { bg: '#E8EAF6', color: '#283593' },
 }
 
 export default function GestionUsuariosPage() {

@@ -18,16 +18,16 @@ const MODULOS = [
   {
     id: 'transporte',
     titulo: 'Transporte',
-    desc: 'Gestión de solicitudes y flota',
+    desc: 'Coordinación y monitoreo de servicios',
     ruta: '/transporte',
     accentColor: '#1565C0',
     iconBg: '#E3F2FD',
-    roles: ['transporte', 'admin'],
+    roles: ['transporte', 'operativo_transporte', 'monitor', 'admin'],
   },
   {
     id: 'operativo',
     titulo: 'Operativo',
-    desc: 'Coordinación y seguimiento',
+    desc: 'Coordinación y seguimiento SLI',
     ruta: '/operativo',
     accentColor: '#2E7D32',
     iconBg: '#E8F5E9',
@@ -65,7 +65,7 @@ const MODULOS = [
     titulo: 'Admin operativo',
     desc: 'Configuración operativa',
     ruta: '/operativo',
-    accentColor: '#0F1923',
+    accentColor: '#374151',
     iconBg: '#F0F2F5',
     roles: ['admin_operativo', 'admin'],
   },
@@ -78,17 +78,32 @@ const MODULOS = [
     iconBg: '#FFEBEE',
     roles: ['admin'],
   },
+  {
+  
+    id: 'admin',
+    titulo: 'Admin',
+    desc: 'Usuarios y configuración',
+    ruta: '/admin',
+    accentColor: '#C41230',
+    iconBg: '#FFEBEE',
+    roles: ['admin'],
+  },
+  
 ]
+
 
 const ICONOS: { [key: string]: string } = {
   evaluador: '📋',
   transporte: '🚛',
+  operativo_transporte: '📍',
+  monitor: '📡',
   operativo: '⚙️',
   comercial: '💼',
   pricing: '📊',
   supervisor: '📈',
   admin_operativo: '🔧',
   admin: '👑',
+  finanzas: '💸',
 }
 
 export default function HubPage() {

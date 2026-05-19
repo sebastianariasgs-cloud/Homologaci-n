@@ -3,120 +3,167 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import BotonAdmin from '../../components/BotonAdmin'
+import BotonHub from '../../components/BotonHub'
 
-const EVENTOS_CRITICOS = [
-  'Ninguno', 'Sin liberación', 'Sin citas de retiro', 'Sin citas de devolución',
-  'Perdida de citas', 'Sin unidades de transporte', 'Contenedores bajados',
-  'Uso de área', 'Sobreestadía', 'Siniestro',
+// ─── Constantes ───────────────────────────────────────────────────────────────
+
+const TIPOS_CARGA = ['Contenedor 40HQ', 'Contenedor 20HQ', 'LCL', 'Sobredimensionada']
+
+const TIPOS_UNIDAD = [
+  'Semitrailer',
+  'Furgón',
+  'Furgón ala de gaviota',
+  'Camión baranda',
+  'Cama baja',
+  'Cama cuna',
+  'Cisterna',
+  'Otro',
 ]
 
-const TIPOS_CARGA = [
-  'Contenedor 20 HQ', 'Contenedor 40 HQ', 'General', 'Refrigerada', 'Peligrosa', 'Sobredimensionada',
-]
+const CARACTERISTICAS = ['Carga general', 'Carga peligrosa', 'Carga refrigerada']
 
-// Fecha actual en hora Peru (UTC-5)
-const ahoraLima = () => {
-  const ahora = new Date()
-  return new Date(ahora.toLocaleString('en-US', { timeZone: 'America/Lima' }))
+const TIPOS_CONTENEDOR = ['Contenedor 40HQ', 'Contenedor 20HQ']
+
+// ─── Estilos base ─────────────────────────────────────────────────────────────
+
+const T  = '#2C2828'
+const T2 = '#696869'
+
+const inp: React.CSSProperties = {
+  width: '100%', padding: '9px 14px',
+  border: '1.5px solid #E2DCDC', borderRadius: '8px',
+  fontSize: '13px', outline: 'none',
+  color: T, background: 'white',
+  boxSizing: 'border-box',
 }
+const lbl: React.CSSProperties = {
+  display: 'block', fontSize: '11px', fontWeight: 600,
+  color: T2, marginBottom: '5px',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+const sec: React.CSSProperties = {
+  background: '#F8F6F6', borderRadius: '10px',
+  padding: '16px', marginBottom: '14px',
+  border: '1px solid #E2DCDC',
+}
+const secTitle: React.CSSProperties = {
+  fontSize: '11px', fontWeight: 700, color: '#C41230',
+  margin: '0 0 14px',
+  textTransform: 'uppercase', letterSpacing: '0.06em',
+}
+
+// ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function NuevaSolicitudPage() {
   const router = useRouter()
-  const [guardando, setGuardando] = useState(false)
-  const [documentos, setDocumentos] = useState<{ nombre: string, archivo: File }[]>([])
-  const [subiendo, setSubiendo] = useState(false)
-  const [rolUsuario, setRolUsuario] = useState('')
-  const [clientes, setClientes] = useState<any[]>([])
+  const [guardando, setGuardando]   = useState(false)
+  const [subiendo, setSubiendo]     = useState(false)
+  const [clientes, setClientes]     = useState<any[]>([])
   const [modoNuevoCliente, setModoNuevoCliente] = useState(false)
   const [nuevoCliente, setNuevoCliente] = useState({ razon_social: '', ruc: '' })
+  const [adjunto, setAdjunto]       = useState<File | null>(null)
+  const [userId, setUserId]         = useState('')
 
   const [form, setForm] = useState({
-    tipo_servicio: 'IMPO',
-    cliente_id: '',
-    shipment: '',
-    bl_awb: '',
-    num_unidades: 1,
-    tipo_carga: 'Contenedor 20 HQ',
-    direccion_recojo: '',
-    direccion_entrega: '',
-    fecha_recojo: '',
-    zona: '',
-    almacen_devolucion: '',
-    peso: '',
-    volumen: '',
-    evento_critico_1: 'Ninguno',
-    evento_critico_2: 'Ninguno',
-    comentarios_operativo: '',
-    observaciones: '',
+    cliente_id:           '',
+    tipo_carga:           'Contenedor 40HQ',
+    caracteristicas:      [] as string[],
+    tipo_unidad:          'Semitrailer',
+    tipo_unidad_detalle:  '',
+    descripcion_producto: '',
+    peso:                 '',
+    volumen:              '',
+    fecha_recojo:         '',
+    hora_recojo:          '',
+    fecha_entrega:        '',
+    hora_entrega:         '',
+    depot_vacios:         '',
+    instrucciones:        '',
+    precio_sugerido:      '',
+    direccion_recojo:     '',   // ← Agregado
+    direccion_entrega:    '',   // ← Agregado
   })
 
-  useEffect(() => { verificarRol() }, [])
+  useEffect(() => { init() }, [])
 
-  const verificarRol = async () => {
+  const init = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/login'); return }
+
     const { data: perfil } = await supabase
       .from('perfiles').select('rol').eq('id', session.user.id).single()
-    const rolesPermitidos = ['operativo_sli', 'admin_operativo', 'supervisor_sli', 'admin']
-    if (!rolesPermitidos.includes(perfil?.rol)) { router.push('/login'); return }
-    setRolUsuario(perfil?.rol)
-    const { data: clientesData } = await supabase
+
+    if (!['operativo_sli', 'admin_operativo', 'supervisor_sli', 'admin'].includes(perfil?.rol)) {
+      router.push('/login'); return
+    }
+
+    setUserId(session.user.id)
+
+    const { data } = await supabase
       .from('clientes').select('id, razon_social, ruc').order('razon_social')
-    setClientes(clientesData || [])
+    setClientes(data || [])
   }
 
-  const puedeEditarEventos = ['admin_operativo', 'supervisor_sli', 'admin'].includes(rolUsuario)
+  const esContenedor = TIPOS_CONTENEDOR.includes(form.tipo_carga)
 
-  const generarNumero = () => {
-    const fecha = ahoraLima()
-    const anio = fecha.getFullYear()
-    const rand = Math.floor(Math.random() * 9000) + 1000
-    return `SOL-${anio}-${rand}`
+  const set = (campo: string, valor: any) => setForm(f => ({ ...f, [campo]: valor }))
+
+  const toggleCaracteristica = (c: string) => {
+    setForm(f => ({
+      ...f,
+      caracteristicas: f.caracteristicas.includes(c)
+        ? f.caracteristicas.filter(x => x !== c)
+        : [...f.caracteristicas, c],
+    }))
   }
 
   const crearClienteNuevo = async (): Promise<string | null> => {
-    if (!nuevoCliente.razon_social) {
-      alert('Ingresa la razón social del cliente')
-      return null
-    }
-    if (nuevoCliente.ruc && nuevoCliente.ruc.length !== 11) {
-      alert('El RUC debe tener 11 dígitos')
-      return null
-    }
-    const { data, error } = await supabase
-      .from('clientes')
-      .insert({ razon_social: nuevoCliente.razon_social, ruc: nuevoCliente.ruc || null })
+    if (!nuevoCliente.razon_social.trim()) { alert('Ingresa la razón social'); return null }
+    if (nuevoCliente.ruc && nuevoCliente.ruc.length !== 11) { alert('El RUC debe tener 11 dígitos'); return null }
+    const { data, error } = await supabase.from('clientes')
+      .insert({ razon_social: nuevoCliente.razon_social.trim(), ruc: nuevoCliente.ruc || null })
       .select().single()
     if (error) { alert('Error al crear cliente: ' + error.message); return null }
     setClientes(prev => [...prev, data].sort((a, b) => a.razon_social.localeCompare(b.razon_social)))
-    setForm({ ...form, cliente_id: data.id })
     setModoNuevoCliente(false)
     setNuevoCliente({ razon_social: '', ruc: '' })
     return data.id
   }
 
-  const agregarDocumento = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const archivos = Array.from(e.target.files || [])
-    setDocumentos(prev => [...prev, ...archivos.map(f => ({ nombre: f.name, archivo: f }))])
-    e.target.value = ''
-  }
-
-  const eliminarDocumento = (i: number) => {
-    setDocumentos(prev => prev.filter((_, idx) => idx !== i))
+  const generarNumero = () => {
+    const anio = new Date().getFullYear()
+    const rand = Math.floor(Math.random() * 9000) + 1000
+    return `SOL-${anio}-${rand}`
   }
 
   const guardar = async () => {
-    if (!form.direccion_recojo || !form.direccion_entrega || !form.fecha_recojo) {
-      alert('Completa los campos obligatorios: direccion de recojo, entrega y fecha')
-      return
+    // Validaciones
+    if (!form.tipo_carga)                 { alert('Selecciona el tipo de carga'); return }
+    if (!form.tipo_unidad)                { alert('Selecciona el tipo de unidad'); return }
+    if (form.tipo_unidad === 'Otro' && !form.tipo_unidad_detalle.trim()) {
+      alert('Detalla el tipo de unidad'); return
     }
+    if (!form.descripcion_producto.trim()) { alert('Ingresa la descripción del producto'); return }
+    
+    // Validaciones Direcciones (Actualizado)
+    if (!form.direccion_recojo.trim())  { alert('Ingresa el lugar de origen'); return }
+    if (!form.direccion_entrega.trim()) { alert('Ingresa el lugar de destino'); return }
+
+    if (!form.fecha_recojo)                { alert('Ingresa la fecha de recojo'); return }
+    if (!form.fecha_entrega)               { alert('Ingresa la fecha de entrega'); return }
+    
+    if (esContenedor && !form.depot_vacios.trim()) {
+      alert('Ingresa el almacén de devolución (DEPOT VACÍOS)'); return
+    }
+    if (!form.precio_sugerido || isNaN(parseFloat(form.precio_sugerido))) {
+      alert('Ingresa el precio sugerido'); return
+    }
+
     setGuardando(true)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/login'); return }
 
-    // Crear cliente nuevo si es necesario
     let clienteId = form.cliente_id
     if (modoNuevoCliente) {
       const nuevoId = await crearClienteNuevo()
@@ -124,313 +171,309 @@ export default function NuevaSolicitudPage() {
       clienteId = nuevoId
     }
 
+    // Crear solicitud
     const { data: sol, error } = await supabase
       .from('solicitudes_transporte')
       .insert({
-        numero: generarNumero(),
-        operativo_id: session.user.id,
-        tipo_servicio: form.tipo_servicio,
-        cliente_id: clienteId || null,
-        shipment: form.shipment || null,
-        bl_awb: form.bl_awb || null,
-        num_unidades: form.num_unidades,
-        tipo_carga: form.tipo_carga,
-        es_contenedor: ['Contenedor 20 HQ', 'Contenedor 40 HQ'].includes(form.tipo_carga),
-        direccion_recojo: form.direccion_recojo,
-        direccion_entrega: form.direccion_entrega,
-        fecha_recojo: form.fecha_recojo,
-        zona: form.zona || null,
-        almacen_devolucion: form.almacen_devolucion || null,
-        peso: form.peso ? parseFloat(form.peso) : null,
-        volumen: form.volumen ? parseFloat(form.volumen) : null,
-        evento_critico_1: form.evento_critico_1,
-        evento_critico_2: form.evento_critico_2,
-        comentarios_operativo: form.comentarios_operativo || null,
-        observaciones: form.observaciones || null,
-        estado: 'pendiente',
+        numero:               generarNumero(),
+        operativo_id:         session.user.id,
+        cliente_id:           clienteId || null,
+        tipo_carga:           form.tipo_carga,
+        caracteristicas:      form.caracteristicas,
+        tipo_unidad:          form.tipo_unidad === 'Otro'
+                                ? `Otro: ${form.tipo_unidad_detalle}`
+                                : form.tipo_unidad,
+        descripcion_producto: form.descripcion_producto.trim(),
+        direccion_recojo:     form.direccion_recojo.trim(),   // ← Agregado
+        direccion_entrega:    form.direccion_entrega.trim(),  // ← Agregado
+        peso:                 form.peso    ? parseFloat(form.peso)    : null,
+        volumen:              form.volumen ? parseFloat(form.volumen) : null,
+        fecha_recojo:         form.fecha_recojo,
+        hora_recojo:          form.hora_recojo   || null,
+        fecha_entrega:        form.fecha_entrega,
+        hora_entrega:         form.hora_entrega  || null,
+        depot_vacios:         esContenedor ? form.depot_vacios.trim() : null,
+        instrucciones:        form.instrucciones.trim() || null,
+        precio_sugerido:      parseFloat(form.precio_sugerido),
+        estado:               'Pendiente de asignación',
         visto_por_transporte: false,
       })
       .select().single()
 
-    if (error) { alert('Error: ' + error.message); setGuardando(false); return }
+    if (error) { alert('Error al crear la solicitud: ' + error.message); setGuardando(false); return }
 
-    // Notificar al area de transporte
-    const { data: transportistas } = await supabase
-      .from('perfiles').select('id').eq('rol', 'transporte')
-    if (transportistas && transportistas.length > 0) {
-      await supabase.from('notificaciones').insert(
-        transportistas.map((t: any) => ({
-          usuario_id: t.id,
-          mensaje: `Nueva solicitud de transporte: ${sol.numero}`,
-          link: `/transporte`,
-        }))
-      )
-    }
+    // Registrar en historial
+    await supabase.from('solicitud_historial').insert({
+      solicitud_id:    sol.id,
+      usuario_id:      session.user.id,
+      estado_nuevo:    'Pendiente de asignación',
+      comentario:      `Solicitud creada — Precio sugerido: S/ ${form.precio_sugerido}`,
+    })
 
-    if (documentos.length > 0) {
+    // Subir adjunto si existe
+    if (adjunto) {
       setSubiendo(true)
-      for (const doc of documentos) {
-        const ruta = `solicitudes/${sol.id}/${doc.nombre.replace(/\s/g, '_')}`
-        const { error: uploadError } = await supabase.storage
-          .from('documentos').upload(ruta, doc.archivo, { upsert: true })
-        if (!uploadError) {
-          await supabase.from('solicitud_documentos').insert({
-            solicitud_id: sol.id, nombre: doc.nombre, url: ruta,
-          })
-        }
+      const ruta = `solicitudes/${sol.id}/${adjunto.name.replace(/\s/g, '_')}`
+      const { error: uploadError } = await supabase.storage
+        .from('documentos').upload(ruta, adjunto, { upsert: true })
+      if (!uploadError) {
+        await supabase.from('solicitud_documentos').insert({
+          solicitud_id: sol.id,
+          nombre:       adjunto.name,
+          url:          ruta,
+        })
       }
       setSubiendo(false)
     }
 
     setGuardando(false)
-    router.push(`/operativo/${sol.id}`)
+    router.push('/operativo')
   }
 
-  const inputStyle = { width: '100%', padding: '9px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' as const }
-  const selectStyle = { ...inputStyle, background: 'white' }
-  const labelStyle = { display: 'block' as const, fontSize: '12px', fontWeight: 500, color: '#444', marginBottom: '5px' }
-
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F7F7', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
-      <nav style={{ background: 'white', borderBottom: '1px solid #EEEEEE', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/LogoOmni.png" alt="Omni Logistics" style={{ height: '32px' }} />
-          <div style={{ width: '1px', height: '20px', background: '#E5E5E5' }} />
+    <div style={{ minHeight: '100vh', background: '#F4F2F2', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
+
+      {/* NAV */}
+      <nav style={{ background: '#2C2828', padding: '0 28px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} onClick={() => router.push('/operativo')} />
+          <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.15)' }} />
           <button onClick={() => router.push('/operativo')}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+            style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             ← Solicitudes
           </button>
-          <span style={{ color: '#DDD' }}>›</span>
-          <span style={{ fontSize: '13px', color: '#1a1a1a', fontWeight: 500 }}>Nueva solicitud</span>
+          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '16px' }}>›</span>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
+            Nueva solicitud
+          </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <BotonAdmin />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BotonHub />
           <button onClick={async () => { localStorage.removeItem('omni_rol'); await supabase.auth.signOut(); router.push('/login') }}
-            style={{ fontSize: '13px', color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+            style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', background: 'none', border: 'none', cursor: 'pointer' }}>
             Salir
           </button>
         </div>
       </nav>
       <div style={{ height: '3px', background: '#C41230' }} />
 
-      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '28px 24px' }}>
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #EEEEEE', padding: '20px 24px' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '28px 24px' }}>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <div style={{ width: '32px', height: '32px', background: '#FEF2F2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🚛</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <div style={{ width: '40px', height: '40px', background: '#FEF2F2', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>🚛</div>
+          <div>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: T, margin: 0 }}>Nueva solicitud de transporte</h2>
+            <p style={{ fontSize: '12px', color: T2, margin: 0 }}>Completa los datos del servicio</p>
+          </div>
+        </div>
+
+        {/* ── 1. Datos del servicio ──────────────────────────────────────── */}
+        <div style={sec}>
+          <p style={secTitle}>Datos del servicio</p>
+
+          {/* Cliente */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+              <label style={{ ...lbl, marginBottom: 0 }}>Cliente</label>
+              <button type="button" onClick={() => { setModoNuevoCliente(!modoNuevoCliente); set('cliente_id', '') }}
+                style={{ fontSize: '10px', color: modoNuevoCliente ? T2 : '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                {modoNuevoCliente ? '← Seleccionar existente' : '+ Crear nuevo cliente'}
+              </button>
+            </div>
+            {modoNuevoCliente ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                <input type="text" value={nuevoCliente.razon_social}
+                  onChange={e => setNuevoCliente({ ...nuevoCliente, razon_social: e.target.value })}
+                  placeholder="Razón social *"
+                  style={{ ...inp, border: '1.5px solid #C41230' }} />
+                <input type="text" value={nuevoCliente.ruc} maxLength={11}
+                  onChange={e => setNuevoCliente({ ...nuevoCliente, ruc: e.target.value.replace(/\D/g, '') })}
+                  placeholder="RUC (opcional)"
+                  style={inp} />
+              </div>
+            ) : (
+              <select value={form.cliente_id} onChange={e => set('cliente_id', e.target.value)} style={inp}>
+                <option value="">Selecciona un cliente...</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.razon_social}{c.ruc ? ` — ${c.ruc}` : ''}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div>
-              <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Nueva solicitud de transporte</h2>
-              <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>Completa los datos del embarque</p>
+              <label style={lbl}>Tipo de carga <span style={{ color: '#C41230' }}>*</span></label>
+              <select value={form.tipo_carga} onChange={e => set('tipo_carga', e.target.value)} style={inp}>
+                {TIPOS_CARGA.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Tipo de unidad <span style={{ color: '#C41230' }}>*</span></label>
+              <select value={form.tipo_unidad} onChange={e => set('tipo_unidad', e.target.value)} style={inp}>
+                {TIPOS_UNIDAD.map(t => <option key={t}>{t}</option>)}
+              </select>
             </div>
           </div>
 
-          {/* Seccion 1 — Datos del servicio */}
-          <div style={{ background: '#F9F9F9', borderRadius: '8px', padding: '14px', marginBottom: '14px' }}>
-            <p style={{ fontSize: '11px', fontWeight: 600, color: '#C41230', margin: '0 0 12px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>Datos del servicio</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label style={labelStyle}>Tipo <span style={{ color: '#C41230' }}>*</span></label>
-                <select value={form.tipo_servicio} onChange={(e) => setForm({ ...form, tipo_servicio: e.target.value })} style={selectStyle}>
-                  <option value="IMPO">IMPO</option>
-                  <option value="EXPO">EXPO</option>
-                </select>
-              </div>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                  <label style={{ ...labelStyle, marginBottom: 0 }}>Cliente</label>
-                  <button type="button" onClick={() => { setModoNuevoCliente(!modoNuevoCliente); setForm({ ...form, cliente_id: '' }) }}
-                    style={{ fontSize: '10px', color: modoNuevoCliente ? '#666' : '#C41230', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                    {modoNuevoCliente ? '← Seleccionar existente' : '+ Crear nuevo cliente'}
-                  </button>
-                </div>
-                {modoNuevoCliente ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '6px' }}>
-                    <input type="text" value={nuevoCliente.razon_social}
-                      onChange={(e) => setNuevoCliente({ ...nuevoCliente, razon_social: e.target.value })}
-                      placeholder="Razón social *"
-                      style={{ ...inputStyle, border: '1.5px solid #C41230' }} />
-                    <input type="text" value={nuevoCliente.ruc}
-                      onChange={(e) => setNuevoCliente({ ...nuevoCliente, ruc: e.target.value })}
-                      placeholder="RUC"
-                      style={inputStyle} />
-                  </div>
-                ) : (
-                  <select value={form.cliente_id} onChange={(e) => setForm({ ...form, cliente_id: e.target.value })} style={selectStyle}>
-                    <option value="">Selecciona un cliente...</option>
-                    {clientes.map(c => (
-                      <option key={c.id} value={c.id}>{c.razon_social}{c.ruc ? ` — ${c.ruc}` : ''}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label style={labelStyle}># Shipment</label>
-                <input type="text" value={form.shipment}
-                  onChange={(e) => setForm({ ...form, shipment: e.target.value })}
-                  placeholder="Ej: B00057672" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>BL / AWB</label>
-                <input type="text" value={form.bl_awb}
-                  onChange={(e) => setForm({ ...form, bl_awb: e.target.value })}
-                  placeholder="Ej: COSCO2026041201" style={inputStyle} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>Tipo de carga <span style={{ color: '#C41230' }}>*</span></label>
-                <select value={form.tipo_carga} onChange={(e) => setForm({ ...form, tipo_carga: e.target.value })} style={selectStyle}>
-                  {TIPOS_CARGA.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Unidades requeridas <span style={{ color: '#C41230' }}>*</span></label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button type="button" onClick={() => setForm({ ...form, num_unidades: Math.max(1, form.num_unidades - 1) })}
-                    style={{ width: '32px', height: '38px', border: '1.5px solid #E8E8E8', borderRadius: '8px', background: 'white', fontSize: '16px', cursor: 'pointer', flexShrink: 0 }}>−</button>
-                  <div style={{ flex: 1, padding: '9px 14px', border: '1.5px solid #C41230', borderRadius: '8px', fontSize: '14px', fontWeight: 700, color: '#C41230', textAlign: 'center' as const, background: '#FEF2F2' }}>
-                    {form.num_unidades}
-                  </div>
-                  <button type="button" onClick={() => setForm({ ...form, num_unidades: form.num_unidades + 1 })}
-                    style={{ width: '32px', height: '38px', border: '1.5px solid #E8E8E8', borderRadius: '8px', background: 'white', fontSize: '16px', cursor: 'pointer', flexShrink: 0 }}>+</button>
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Peso (TN)</label>
-                <input type="number" min={0} value={form.peso}
-                  onChange={(e) => setForm({ ...form, peso: e.target.value })}
-                  placeholder="0.00" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Volumen (m3)</label>
-                <input type="number" min={0} value={form.volumen}
-                  onChange={(e) => setForm({ ...form, volumen: e.target.value })}
-                  placeholder="0.00" style={inputStyle} />
-              </div>
-            </div>
-          </div>
-
-          {/* Seccion 2 — Direcciones y fechas */}
-          <div style={{ background: '#F9F9F9', borderRadius: '8px', padding: '14px', marginBottom: '14px' }}>
-            <p style={{ fontSize: '11px', fontWeight: 600, color: '#C41230', margin: '0 0 12px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>Direcciones y fechas</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-              <div>
-                <label style={labelStyle}>Direccion de recojo / Alm. retiro <span style={{ color: '#C41230' }}>*</span></label>
-                <input type="text" value={form.direccion_recojo}
-                  onChange={(e) => setForm({ ...form, direccion_recojo: e.target.value })}
-                  placeholder="Terminal, muelle o direccion" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Direccion de entrega <span style={{ color: '#C41230' }}>*</span></label>
-                <input type="text" value={form.direccion_entrega}
-                  onChange={(e) => setForm({ ...form, direccion_entrega: e.target.value })}
-                  placeholder="Almacen o direccion de destino" style={inputStyle} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={labelStyle}>Fecha de recojo <span style={{ color: '#C41230' }}>*</span></label>
-                <input type="date" value={form.fecha_recojo}
-                  onChange={(e) => setForm({ ...form, fecha_recojo: e.target.value })} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Zona</label>
-                <input type="text" value={form.zona}
-                  onChange={(e) => setForm({ ...form, zona: e.target.value })}
-                  placeholder="Ej: LURIN, UNICACHI" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Almacen de devolucion</label>
-                <input type="text" value={form.almacen_devolucion}
-                  onChange={(e) => setForm({ ...form, almacen_devolucion: e.target.value })}
-                  placeholder="Nombre del almacen" style={inputStyle} />
-              </div>
-            </div>
-          </div>
-
-          {/* Seccion 3 — Eventos criticos */}
-          {puedeEditarEventos && (
-            <div style={{ background: '#FFF7ED', borderRadius: '8px', padding: '14px', marginBottom: '14px', border: '1px solid #FED7AA' }}>
-              <p style={{ fontSize: '11px', fontWeight: 600, color: '#C2410C', margin: '0 0 12px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
-                Eventos criticos
-                <span style={{ fontSize: '10px', fontWeight: 400, marginLeft: '8px', background: '#FED7AA', padding: '1px 6px', borderRadius: '4px' }}>Solo Admin Operativo y Supervisor</span>
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                <div>
-                  <label style={labelStyle}>Evento critico 1</label>
-                  <select value={form.evento_critico_1}
-                    onChange={(e) => setForm({ ...form, evento_critico_1: e.target.value })} style={selectStyle}>
-                    {EVENTOS_CRITICOS.map(e => <option key={e}>{e}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Evento critico 2</label>
-                  <select value={form.evento_critico_2}
-                    onChange={(e) => setForm({ ...form, evento_critico_2: e.target.value })} style={selectStyle}>
-                    {EVENTOS_CRITICOS.map(e => <option key={e}>{e}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>Comentarios</label>
-                <textarea value={form.comentarios_operativo}
-                  onChange={(e) => setForm({ ...form, comentarios_operativo: e.target.value })}
-                  placeholder="Observaciones internas..."
-                  style={{ width: '100%', padding: '9px 14px', border: '1.5px solid #FED7AA', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'none' as const, height: '70px', boxSizing: 'border-box' as const }} />
-              </div>
+          {form.tipo_unidad === 'Otro' && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={lbl}>Especifica el tipo de unidad <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="text" value={form.tipo_unidad_detalle}
+                onChange={e => set('tipo_unidad_detalle', e.target.value)}
+                placeholder="Describe el tipo de unidad"
+                style={inp} />
             </div>
           )}
 
-          {/* Seccion 4 — Documentos */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={labelStyle}>Documentos del embarque</label>
-            <div style={{ border: '2px dashed #E8E8E8', borderRadius: '8px', padding: '14px', background: '#F9F9F9' }}>
-              {documentos.length > 0 && (
-                <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap' as const, gap: '6px' }}>
-                  {documentos.map((doc, i) => (
-                    <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#E6F1FB', border: '1px solid #B5D4F4', borderRadius: '6px', padding: '4px 10px' }}>
-                      <span style={{ fontSize: '11px', color: '#185FA5' }}>📄 {doc.nombre}</span>
-                      <button type="button" onClick={() => eliminarDocumento(i)}
-                        style={{ background: 'none', border: 'none', color: '#C41230', cursor: 'pointer', fontSize: '12px', padding: 0, lineHeight: 1 }}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'white', border: '1px solid #E8E8E8', borderRadius: '7px', padding: '7px 14px', fontSize: '12px', color: '#666' }}>
-                + Adjuntar documentos
-                <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" style={{ display: 'none' }} onChange={agregarDocumento} />
-              </label>
-              <span style={{ fontSize: '10px', color: '#AAA', marginLeft: '8px' }}>PDF, JPG, PNG, DOCX, XLSX</span>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={lbl}>Características de la carga</label>
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              {CARACTERISTICAS.map(c => (
+                <label key={c} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: T, cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox"
+                    checked={form.caracteristicas.includes(c)}
+                    onChange={() => toggleCaracteristica(c)}
+                    style={{ width: '15px', height: '15px', accentColor: '#C41230', cursor: 'pointer' }} />
+                  {c}
+                </label>
+              ))}
             </div>
           </div>
 
-          {/* Instrucciones */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={labelStyle}>Instrucciones para el transportista</label>
-            <textarea value={form.observaciones}
-              onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
-              placeholder="Instrucciones especiales, coordinar con almacen, hora de llegada, etc."
-              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', outline: 'none', resize: 'none' as const, height: '70px', boxSizing: 'border-box' as const }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div>
+              <label style={lbl}>Descripción del producto <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="text" value={form.descripcion_producto}
+                onChange={e => set('descripcion_producto', e.target.value)}
+                placeholder="Ej: Maquinaria industrial, textiles, alimentos..."
+                style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Peso (TN)</label>
+              <input type="number" min={0} step={0.01} value={form.peso}
+                onChange={e => set('peso', e.target.value)}
+                placeholder="0.00" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Volumen (m³)</label>
+              <input type="number" min={0} step={0.01} value={form.volumen}
+                onChange={e => set('volumen', e.target.value)}
+                placeholder="0.00" style={inp} />
+            </div>
           </div>
 
-          {/* Botones */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <button type="button" onClick={() => router.push('/operativo')}
-              style={{ padding: '10px 20px', background: '#F5F5F5', color: '#666', border: '1px solid #E8E8E8', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
-              Cancelar
-            </button>
-            <button type="button" onClick={guardar} disabled={guardando || subiendo}
-              style={{ padding: '10px 20px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', opacity: guardando || subiendo ? 0.7 : 1 }}>
-              {guardando ? 'Guardando...' : subiendo ? 'Subiendo documentos...' : 'Enviar solicitud →'}
-            </button>
+          {esContenedor && (
+            <div style={{ background: '#EFF6FF', borderRadius: '8px', padding: '12px 14px', border: '1px solid #BFDBFE' }}>
+              <label style={{ ...lbl, color: '#1565C0', marginBottom: '6px' }}>
+                Almacén de devolución — DEPOT VACÍOS <span style={{ color: '#C41230' }}>*</span>
+              </label>
+              <input type="text" value={form.depot_vacios}
+                onChange={e => set('depot_vacios', e.target.value)}
+                placeholder="Ej: DEPOT CALLAO, CONTRANS, LIMA DEPOT..."
+                style={{ ...inp, border: '1.5px solid #93C5FD' }} />
+            </div>
+          )}
+
+          {/* Direcciones Origen/Destino */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
+            <div>
+              <label style={lbl}>Lugar de origen <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="text" value={form.direccion_recojo}
+                onChange={e => set('direccion_recojo', e.target.value)}
+                placeholder="Ej: Callao, Terminal Portuario APM"
+                style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Lugar de destino <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="text" value={form.direccion_entrega}
+                onChange={e => set('direccion_entrega', e.target.value)}
+                placeholder="Ej: Ate Vitarte, Almacén cliente"
+                style={inp} />
+            </div>
           </div>
+        </div>
+
+        {/* ── 2. Fechas y horarios ───────────────────────────────────────── */}
+        <div style={sec}>
+          <p style={secTitle}>Fechas y horarios</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>Fecha de recojo <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="date" value={form.fecha_recojo}
+                onChange={e => set('fecha_recojo', e.target.value)} style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Hora de recojo</label>
+              <input type="time" value={form.hora_recojo}
+                onChange={e => set('hora_recojo', e.target.value)} style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Fecha de entrega <span style={{ color: '#C41230' }}>*</span></label>
+              <input type="date" value={form.fecha_entrega}
+                onChange={e => set('fecha_entrega', e.target.value)} style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Hora de entrega</label>
+              <input type="time" value={form.hora_entrega}
+                onChange={e => set('hora_entrega', e.target.value)} style={inp} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── 3. Precio sugerido ─────────────────────────────────────────── */}
+        <div style={{ background: '#F8F5FF', borderRadius: '10px', padding: '16px', marginBottom: '14px', border: '1.5px solid #DDD6FE' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <div style={{ width: '28px', height: '28px', background: '#EDE9FE', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>💰</div>
+            <div>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: '#5B21B6', margin: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Precio sugerido <span style={{ color: '#C41230' }}>*</span>
+              </p>
+            </div>
+          </div>
+          <div style={{ position: 'relative', maxWidth: '220px' }}>
+            <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 700, color: T2 }}>S/</span>
+            <input type="number" min={0} step={0.01}
+              value={form.precio_sugerido}
+              onChange={e => set('precio_sugerido', e.target.value)}
+              placeholder="0.00"
+              style={{ ...inp, paddingLeft: '36px', fontSize: '16px', fontWeight: 700, border: '1.5px solid #C4B5FD' }} />
+          </div>
+        </div>
+
+        {/* ── 4. Instrucciones ───────────────────────────────────────────── */}
+        <div style={sec}>
+          <p style={secTitle}>Instrucciones</p>
+          <textarea value={form.instrucciones}
+            onChange={e => set('instrucciones', e.target.value)}
+            placeholder="Instrucciones especiales..."
+            rows={3}
+            style={{ ...inp, resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5' }} />
+        </div>
+
+        {/* ── 5. Adjunto ─────────────────────────────────────────────────── */}
+        <div style={{ ...sec, marginBottom: '24px' }}>
+          <p style={secTitle}>Adjunto</p>
+          {adjunto ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#E3F2FD', border: '1px solid #90CAF9', borderRadius: '8px', padding: '10px 14px' }}>
+              <span style={{ fontSize: '13px', color: '#1565C0', fontWeight: 500, flex: 1 }}>{adjunto.name}</span>
+              <button onClick={() => setAdjunto(null)} style={{ background: 'none', border: 'none', color: '#C41230', cursor: 'pointer' }}>×</button>
+            </div>
+          ) : (
+            <label style={{ display: 'block', border: '2px dashed #D1CCCC', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', background: 'white' }}>
+              <p style={{ fontSize: '13px', color: T2 }}>Haz clic para adjuntar archivo</p>
+              <input type="file" style={{ display: 'none' }} onChange={e => setAdjunto(e.target.files?.[0] || null)} />
+            </label>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px', borderTop: '1px solid #E2DCDC' }}>
+          <button type="button" onClick={() => router.push('/operativo')} style={{ padding: '10px 20px', background: '#F4F2F2', color: T2, border: '1px solid #E2DCDC', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={guardar} disabled={guardando || subiendo} style={{ padding: '10px 24px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: guardando || subiendo ? 0.7 : 1 }}>
+            {guardando ? 'Guardando...' : 'Enviar solicitud →'}
+          </button>
         </div>
       </div>
     </div>
