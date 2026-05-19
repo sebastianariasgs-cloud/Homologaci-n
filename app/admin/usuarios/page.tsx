@@ -15,6 +15,7 @@ const ROLES = [
   { value: 'operativo_transporte', label: 'Operativo Transporte' },
   { value: 'monitor',              label: 'Monitor' },
   { value: 'admin',                label: 'Administrador' },
+  { value: 'finanzas', label: 'Finanzas' }
 ]
 
 const ROLES_INTERNOS = [
@@ -36,6 +37,8 @@ const rolColors: Record<string, { bg: string, color: string }> = {
   operativo_sli:        { bg: '#FFF8E1', color: '#F57F17' },
   admin_operativo:      { bg: '#FCE4EC', color: '#880E4F' },
   supervisor_sli:       { bg: '#E8EAF6', color: '#283593' },
+  finanzas:             { bg: '#F3E5F5', color: '#6A1B9A' },
+
 }
 
 export default function GestionUsuariosPage() {

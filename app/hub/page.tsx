@@ -79,14 +79,13 @@ const MODULOS = [
     roles: ['admin'],
   },
   {
-  
-    id: 'admin',
-    titulo: 'Admin',
-    desc: 'Usuarios y configuración',
-    ruta: '/admin',
-    accentColor: '#C41230',
-    iconBg: '#FFEBEE',
-    roles: ['admin'],
+    id: 'finanzas',
+    titulo: 'Finanzas',
+    desc: 'Anticipos y detracciones',
+    ruta: '/finanzas',
+    accentColor: '#6A1B9A',
+    iconBg: '#F3E5F5',
+    roles: ['finanzas', 'operativo_sli', 'admin_operativo', 'supervisor_sli', 'admin'],
   },
   
 ]
