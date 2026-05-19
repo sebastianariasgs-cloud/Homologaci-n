@@ -147,63 +147,70 @@ export default function AnticiposPage() {
   }
 
   // ── XML Parser SUNAT ───────────────────────────────────────────────────────
-  const parsearXMLFactura = (xmlText: string) => {
-    try {
-      const parser = new DOMParser()
-      const doc    = parser.parseFromString(xmlText, 'text/xml')
+const parsearXMLFactura = (xmlText: string) => {
+  try {
+    const parser = new DOMParser()
+    const doc    = parser.parseFromString(xmlText, 'text/xml')
 
-      const getTag = (tag: string): string =>
-        doc.getElementsByTagName(`cbc:${tag}`)[0]?.textContent?.trim() ||
-        doc.getElementsByTagName(tag)[0]?.textContent?.trim() || ''
+    if (doc.querySelector('parsererror')) return null
 
-      const getNestedFirst = (parent: string, tag: string): string => {
-        const parents = doc.getElementsByTagName(parent)
-        for (let i = 0; i < parents.length; i++) {
-          const found = parents[i].getElementsByTagName(`cbc:${tag}`)[0] ||
-                        parents[i].getElementsByTagName(tag)[0]
-          if (found) return found.textContent?.trim() || ''
-        }
-        return ''
-      }
+    // Primer cbc:ID del documento = número de factura
+    const numero = doc.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
+    const fecha  = doc.getElementsByTagName('cbc:IssueDate')[0]?.textContent?.trim() || ''
+    const moneda = doc.getElementsByTagName('cbc:DocumentCurrencyCode')[0]?.textContent?.trim() || ''
 
-      const numero   = doc.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
-      const fecha    = getTag('IssueDate')
-      const moneda   = getTag('DocumentCurrencyCode')
-      const total    = getNestedFirst('LegalMonetaryTotal', 'PayableAmount')
-      const igv      = doc.getElementsByTagName('cbc:TaxAmount')[0]?.textContent?.trim() || ''
-      const subtotal = getNestedFirst('LegalMonetaryTotal', 'LineExtensionAmount') ||
-                       getNestedFirst('LegalMonetaryTotal', 'TaxExclusiveAmount')
+    // Montos desde LegalMonetaryTotal
+    const lmt      = doc.getElementsByTagName('cac:LegalMonetaryTotal')[0]
+    const total    = lmt?.getElementsByTagName('cbc:PayableAmount')[0]?.textContent?.trim() || ''
+    const subtotal = lmt?.getElementsByTagName('cbc:LineExtensionAmount')[0]?.textContent?.trim() || ''
 
-      const supplierNodes = doc.getElementsByTagName('cac:AccountingSupplierParty')
-      let rucEmisor = '', nombreEmisor = ''
-      if (supplierNodes.length > 0) {
-        rucEmisor    = supplierNodes[0].getElementsByTagName('cbc:CompanyID')[0]?.textContent?.trim() || ''
-        nombreEmisor = supplierNodes[0].getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
-      }
+    // IGV desde primer TaxTotal
+    const taxTotal = doc.getElementsByTagName('cac:TaxTotal')[0]
+    const igv      = taxTotal?.getElementsByTagName('cbc:TaxAmount')[0]?.textContent?.trim() || ''
 
-      const customerNodes = doc.getElementsByTagName('cac:AccountingCustomerParty')
-      let rucReceptor = '', nombreReceptor = ''
-      if (customerNodes.length > 0) {
-        rucReceptor    = customerNodes[0].getElementsByTagName('cbc:CompanyID')[0]?.textContent?.trim() || ''
-        nombreReceptor = customerNodes[0].getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
-      }
-
-      return { numero, fecha, moneda, total, igv, subtotal, rucEmisor, nombreEmisor, rucReceptor, nombreReceptor, valido: !!numero }
-    } catch { return null }
-  }
-
-  const manejarArchivoXML = async (file: File) => {
-    if (!file) return
-    const texto = await file.text()
-    const datos = parsearXMLFactura(texto)
-    if (datos?.valido) {
-      setDatosXML(datos)
-      setArchivoXML(file)
-      setMostrarXML(true)
-    } else {
-      alert('No se pudo leer el XML. Verifica que sea una factura electrónica SUNAT válida.')
+    // Emisor — RUC en PartyIdentification/cbc:ID, nombre en PartyLegalEntity/RegistrationName
+    const supplierNode = doc.getElementsByTagName('cac:AccountingSupplierParty')[0]
+    let rucEmisor = '', nombreEmisor = ''
+    if (supplierNode) {
+      rucEmisor    = supplierNode.getElementsByTagName('cac:PartyIdentification')[0]
+                       ?.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
+      nombreEmisor = supplierNode.getElementsByTagName('cac:PartyLegalEntity')[0]
+                       ?.getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
     }
+
+    // Receptor — misma estructura
+    const customerNode = doc.getElementsByTagName('cac:AccountingCustomerParty')[0]
+    let rucReceptor = '', nombreReceptor = ''
+    if (customerNode) {
+      rucReceptor    = customerNode.getElementsByTagName('cac:PartyIdentification')[0]
+                         ?.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
+      nombreReceptor = customerNode.getElementsByTagName('cac:PartyLegalEntity')[0]
+                         ?.getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
+    }
+
+    return { numero, fecha, moneda, total, igv, subtotal, rucEmisor, nombreEmisor, rucReceptor, nombreReceptor, valido: !!numero }
+  } catch { return null }
+}
+
+ const manejarArchivoXML = async (file: File) => {
+  if (!file) return
+  // Leer como ArrayBuffer para manejar el encoding correctamente
+  const buffer  = await file.arrayBuffer()
+  const uint8   = new Uint8Array(buffer)
+  // Detectar encoding del XML declaration
+  const preview = new TextDecoder('utf-8', { fatal: false }).decode(uint8.slice(0, 200))
+  const match   = preview.match(/encoding=['"]([\w-]+)['"]/i)
+  const encoding = match ? match[1] : 'UTF-8'
+  const texto   = new TextDecoder(encoding).decode(buffer)
+  const datos   = parsearXMLFactura(texto)
+  if (datos?.valido) {
+    setDatosXML(datos)
+    setArchivoXML(file)
+    setMostrarXML(true)
+  } else {
+    alert('No se pudo leer el XML. Verifica que sea una factura electrónica SUNAT válida.')
   }
+}
 
   const confirmarXML = async () => {
     if (!archivoXML || !datosXML || !seleccionado) return
