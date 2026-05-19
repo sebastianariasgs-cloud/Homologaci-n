@@ -50,23 +50,42 @@ export default function AnticiposPage() {
     init()
   }, [])
 
-  const cargar = async (p?: any) => {
-    const perfActual = p || perfil
-    setCargando(true)
-    let query = supabase
-      .from('anticipos')
-      .select('*, solicitante:solicitante_id(nombre, email)')
-      .order('created_at', { ascending: false })
+const cargar = async (p?: any) => {
+  const perfActual = p || perfil
+  setCargando(true)
 
-    if (['operativo_sli', 'admin_operativo', 'supervisor_sli'].includes(perfActual?.rol)) {
-      const { data: { session } } = await supabase.auth.getSession()
-      query = query.eq('solicitante_id', session?.user.id)
-    }
+  let query = supabase
+    .from('anticipos')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-    const { data } = await query
-    setAnticipos(data || [])
-    setCargando(false)
+  if (['operativo_sli', 'admin_operativo', 'supervisor_sli'].includes(perfActual?.rol)) {
+    const { data: { session } } = await supabase.auth.getSession()
+    query = query.eq('solicitante_id', session?.user.id)
   }
+
+  const { data, error } = await query
+
+  if (error) { console.error(error); setCargando(false); return }
+
+  // Obtener nombres de solicitantes por separado
+  const ids = [...new Set((data || []).map((a: any) => a.solicitante_id).filter(Boolean))]
+  let perfilesMap: Record<string, any> = {}
+
+  if (ids.length > 0) {
+    const { data: perfs } = await supabase
+      .from('perfiles').select('id, nombre, email').in('id', ids)
+    ;(perfs || []).forEach((p: any) => { perfilesMap[p.id] = p })
+  }
+
+  const anticiposConPerfil = (data || []).map((a: any) => ({
+    ...a,
+    solicitante: perfilesMap[a.solicitante_id] || null,
+  }))
+
+  setAnticipos(anticiposConPerfil)
+  setCargando(false)
+}
 
   const seleccionar = (ant: any) => {
     setSeleccionado(ant)
