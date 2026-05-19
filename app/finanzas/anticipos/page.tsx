@@ -5,34 +5,40 @@ import { supabase } from '@/lib/supabase'
 import BotonHub from '../../components/BotonHub'
 
 const ESTADOS: Record<string, { bg: string; color: string; label: string }> = {
-  pendiente_firma: { bg: '#FFF3E0', color: '#E65100',  label: 'Pendiente de firma' },
-  firmado:         { bg: '#E3F2FD', color: '#1565C0',  label: 'Firmado'            },
-  pagado:          { bg: '#E8F5E9', color: '#2E7D32',  label: 'Pagado'             },
-  regularizado:    { bg: '#F3E5F5', color: '#6A1B9A',  label: 'Regularizado'       },
-  observado:       { bg: '#FFEBEE', color: '#B71C1C',  label: 'Observado'          },
+  pendiente_firma: { bg: '#FFF3E0', color: '#E65100', label: 'Pendiente de firma'       },
+  firmado:         { bg: '#E3F2FD', color: '#1565C0', label: 'Firmado'                  },
+  pagado:          { bg: '#FFF8E1', color: '#F57F17', label: 'Pagado / Pdte. rendición' },
+  rendido:         { bg: '#E8F5E9', color: '#2E7D32', label: 'Rendido'                  },
+  observado:       { bg: '#FFEBEE', color: '#B71C1C', label: 'Observado'                },
 }
 
 function BadgeEstado({ estado }: { estado: string }) {
   const e = ESTADOS[estado] || { bg: '#F0F2F5', color: '#8A9BB0', label: estado }
-  return <span style={{ fontSize: '10px', fontWeight: 700, background: e.bg, color: e.color, padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap' as const }}>{e.label}</span>
+  return (
+    <span style={{ fontSize: '10px', fontWeight: 700, background: e.bg, color: e.color, padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap' as const }}>
+      {e.label}
+    </span>
+  )
 }
 
 export default function AnticiposPage() {
   const router = useRouter()
-  const [perfil,      setPerfil]      = useState<any>(null)
-  const [anticipos,   setAnticipos]   = useState<any[]>([])
+  const [perfil,       setPerfil]       = useState<any>(null)
+  const [anticipos,    setAnticipos]    = useState<any[]>([])
   const [seleccionado, setSeleccionado] = useState<any>(null)
-  const [cargando,    setCargando]    = useState(true)
+  const [cargando,     setCargando]     = useState(true)
   const [filtroEstado, setFiltroEstado] = useState('todos')
-  const [busqueda,    setBusqueda]    = useState('')
+  const [busqueda,     setBusqueda]     = useState('')
+  const [fechaDesde,   setFechaDesde]   = useState('')
+  const [fechaHasta,   setFechaHasta]   = useState('')
 
   // Panel finanzas
-  const [nuevoEstado,      setNuevoEstado]      = useState('')
-  const [obsFinanzas,      setObsFinanzas]      = useState('')
-  const [movBancario,      setMovBancario]      = useState('')
-  const [guardando,        setGuardando]        = useState(false)
-  const [subiendoComp,     setSubiendoComp]     = useState(false)
-  const [subiendoFact,     setSubiendoFact]     = useState(false)
+  const [nuevoEstado,  setNuevoEstado]  = useState('')
+  const [obsFinanzas,  setObsFinanzas]  = useState('')
+  const [movBancario,  setMovBancario]  = useState('')
+  const [guardando,    setGuardando]    = useState(false)
+  const [subiendoComp, setSubiendoComp] = useState(false)
+  const [subiendoFact, setSubiendoFact] = useState(false)
   const compRef = useRef<HTMLInputElement>(null)
   const factRef = useRef<HTMLInputElement>(null)
 
@@ -50,42 +56,34 @@ export default function AnticiposPage() {
     init()
   }, [])
 
-const cargar = async (p?: any) => {
-  const perfActual = p || perfil
-  setCargando(true)
+  const cargar = async (p?: any) => {
+    const perfActual = p || perfil
+    setCargando(true)
 
-  let query = supabase
-    .from('anticipos')
-    .select('*')
-    .order('created_at', { ascending: false })
+    let query = supabase
+      .from('anticipos')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  if (['operativo_sli', 'admin_operativo', 'supervisor_sli'].includes(perfActual?.rol)) {
-    const { data: { session } } = await supabase.auth.getSession()
-    query = query.eq('solicitante_id', session?.user.id)
+    if (['operativo_sli', 'admin_operativo', 'supervisor_sli'].includes(perfActual?.rol)) {
+      const { data: { session } } = await supabase.auth.getSession()
+      query = query.eq('solicitante_id', session?.user.id)
+    }
+
+    const { data, error } = await query
+    if (error) { console.error(error); setCargando(false); return }
+
+    // Nombres de solicitantes por separado
+    const ids = [...new Set((data || []).map((a: any) => a.solicitante_id).filter(Boolean))]
+    let perfilesMap: Record<string, any> = {}
+    if (ids.length > 0) {
+      const { data: perfs } = await supabase.from('perfiles').select('id, nombre, email').in('id', ids)
+      ;(perfs || []).forEach((p: any) => { perfilesMap[p.id] = p })
+    }
+
+    setAnticipos((data || []).map((a: any) => ({ ...a, solicitante: perfilesMap[a.solicitante_id] || null })))
+    setCargando(false)
   }
-
-  const { data, error } = await query
-
-  if (error) { console.error(error); setCargando(false); return }
-
-  // Obtener nombres de solicitantes por separado
-  const ids = [...new Set((data || []).map((a: any) => a.solicitante_id).filter(Boolean))]
-  let perfilesMap: Record<string, any> = {}
-
-  if (ids.length > 0) {
-    const { data: perfs } = await supabase
-      .from('perfiles').select('id, nombre, email').in('id', ids)
-    ;(perfs || []).forEach((p: any) => { perfilesMap[p.id] = p })
-  }
-
-  const anticiposConPerfil = (data || []).map((a: any) => ({
-    ...a,
-    solicitante: perfilesMap[a.solicitante_id] || null,
-  }))
-
-  setAnticipos(anticiposConPerfil)
-  setCargando(false)
-}
 
   const seleccionar = (ant: any) => {
     setSeleccionado(ant)
@@ -100,12 +98,9 @@ const cargar = async (p?: any) => {
   const guardarCambios = async () => {
     if (!seleccionado) return
     setGuardando(true)
-    await supabase.from('anticipos').update({
-      estado:               nuevoEstado,
-      observacion_finanzas: obsFinanzas || null,
-      mov_bancario:         movBancario || null,
-    }).eq('id', seleccionado.id)
-    const updated = { ...seleccionado, estado: nuevoEstado, observacion_finanzas: obsFinanzas, mov_bancario: movBancario }
+    const upd = { estado: nuevoEstado, observacion_finanzas: obsFinanzas || null, mov_bancario: movBancario || null }
+    await supabase.from('anticipos').update(upd).eq('id', seleccionado.id)
+    const updated = { ...seleccionado, ...upd }
     setSeleccionado(updated)
     setAnticipos(prev => prev.map(a => a.id === seleccionado.id ? updated : a))
     setGuardando(false)
@@ -121,22 +116,74 @@ const cargar = async (p?: any) => {
     const { data: { publicUrl } } = supabase.storage.from('documentos').getPublicUrl(path)
     const upd = tipo === 'comprobante'
       ? { comprobante_url: publicUrl, comprobante_nombre: file.name }
-      : { factura_url: publicUrl, factura_nombre: file.name, fecha_regularizacion: new Date().toISOString().split('T')[0] }
+      : { factura_url: publicUrl, factura_nombre: file.name, fecha_regularizacion: new Date().toISOString().split('T')[0], estado: 'rendido' }
     await supabase.from('anticipos').update(upd).eq('id', seleccionado.id)
     const updated = { ...seleccionado, ...upd }
     setSeleccionado(updated)
+    setNuevoEstado(updated.estado)
     setAnticipos(prev => prev.map(a => a.id === seleccionado.id ? updated : a))
     tipo === 'comprobante' ? setSubiendoComp(false) : setSubiendoFact(false)
   }
 
+  const exportarExcel = async () => {
+    const XLSX = await import('xlsx')
+    const datos = listaFiltrada.map(a => ({
+      'N° Solicitud':         a.numero,
+      'Fecha':                new Date(a.fecha).toLocaleDateString('es-PE'),
+      'Solicitante':          a.solicitante?.email || a.solicitante?.nombre || '—',
+      'Proveedor':            a.proveedor,
+      'Moneda':               a.moneda,
+      'Monto':                parseFloat(a.monto),
+      'Descripción':          a.descripcion || '—',
+      'Shipment':             a.shipment || '—',
+      'BK/BL':                a.bk_bl || '—',
+      'Facturado a':          a.facturado_a || '—',
+      'N° Factura':           a.factura_numero || '—',
+      'Banco':                a.banco || '—',
+      'Cuenta bancaria':      a.cuenta_bancaria || '—',
+      'Código de pago':       a.codigo_pago || '—',
+      'MOV Bancario':         a.mov_bancario || '—',
+      'Estado':               ESTADOS[a.estado]?.label || a.estado,
+      'Comprobante':          a.comprobante_url ? 'Sí' : 'No',
+      'Factura subida':       a.factura_url ? 'Sí' : 'No',
+      'Fecha rendición':      a.fecha_regularizacion ? new Date(a.fecha_regularizacion).toLocaleDateString('es-PE') : '—',
+      'Observación finanzas': a.observacion_finanzas || '—',
+      'Comentarios':          a.comentarios || '—',
+    }))
+
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(datos)
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 12 }, { wch: 28 }, { wch: 36 },
+      { wch: 8  }, { wch: 12 }, { wch: 30 }, { wch: 16 },
+      { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 },
+      { wch: 24 }, { wch: 16 }, { wch: 16 }, { wch: 22 },
+      { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 28 }, { wch: 28 },
+    ]
+
+    const totalUSD = listaFiltrada.filter(a => a.moneda === 'USD').reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+    const totalPEN = listaFiltrada.filter(a => a.moneda === 'PEN').reduce((s, a) => s + parseFloat(a.monto || 0), 0)
+    XLSX.utils.sheet_add_aoa(ws, [
+      [],
+      ['', '', '', 'TOTAL USD', 'USD', totalUSD],
+      ['', '', '', 'TOTAL PEN', 'PEN', totalPEN],
+    ], { origin: -1 })
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Anticipos')
+    const filtroLabel = filtroEstado === 'todos' ? 'todos' : ESTADOS[filtroEstado]?.label || filtroEstado
+    XLSX.writeFile(wb, `Anticipos_${filtroLabel}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
   const listaFiltrada = anticipos.filter(a => {
-    const matchEstado  = filtroEstado === 'todos' || a.estado === filtroEstado
+    const matchEstado   = filtroEstado === 'todos' || a.estado === filtroEstado
     const matchBusqueda = !busqueda ||
       a.numero?.toLowerCase().includes(busqueda.toLowerCase()) ||
       a.proveedor?.toLowerCase().includes(busqueda.toLowerCase()) ||
       a.descripcion?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      a.solicitante?.nombre?.toLowerCase().includes(busqueda.toLowerCase())
-    return matchEstado && matchBusqueda
+      a.solicitante?.email?.toLowerCase().includes(busqueda.toLowerCase())
+    const matchDesde = !fechaDesde || a.fecha >= fechaDesde
+    const matchHasta = !fechaHasta || a.fecha <= fechaHasta
+    return matchEstado && matchBusqueda && matchDesde && matchHasta
   })
 
   const inp: any = { width: '100%', padding: '9px 12px', border: '1px solid #E8ECF0', borderRadius: '8px', fontSize: '13px', fontFamily: 'inherit', background: 'white', color: '#0F1923', outline: 'none', boxSizing: 'border-box' }
@@ -152,6 +199,7 @@ const cargar = async (p?: any) => {
   return (
     <div style={{ minHeight: '100vh', background: '#F0F2F5', fontFamily: "'Segoe UI', Roboto, sans-serif" }}>
 
+      {/* NAV */}
       <nav style={{ background: '#0F1923', padding: '0 28px', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <a href="/hub"><img src="/LogoOmni.png" alt="Omni" style={{ height: '28px', filter: 'brightness(0) invert(1)', cursor: 'pointer' }} /></a>
@@ -161,6 +209,12 @@ const cargar = async (p?: any) => {
           <span style={{ fontSize: '13px', color: 'white', fontWeight: 600 }}>Anticipos</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {esFinanzas && (
+            <button onClick={exportarExcel}
+              style={{ padding: '7px 16px', background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              ↓ Exportar Excel
+            </button>
+          )}
           {esOperativo && (
             <button onClick={() => router.push('/finanzas/anticipos/nueva')}
               style={{ padding: '7px 16px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
@@ -182,26 +236,53 @@ const cargar = async (p?: any) => {
         <div style={{ width: '320px', minWidth: '320px', background: 'white', borderRight: '1px solid #E8ECF0', display: 'flex', flexDirection: 'column' }}>
 
           <div style={{ padding: '14px 16px', borderBottom: '1px solid #E8ECF0' }}>
-            <input placeholder="Buscar proveedor, número..." value={busqueda}
+            <input placeholder="Buscar proveedor, número, email..." value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
               style={{ ...inp, marginBottom: '10px' }} />
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-              {['todos', ...Object.keys(ESTADOS)].map(f => (
+
+            {/* Filtros de estado */}
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' as const, marginBottom: '10px' }}>
+              {(['todos', ...Object.keys(ESTADOS)] as const).map(f => (
                 <button key={f} onClick={() => setFiltroEstado(f)}
                   style={{ padding: '4px 10px', border: `1px solid ${filtroEstado === f ? '#0F1923' : '#E8ECF0'}`, borderRadius: '20px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', background: filtroEstado === f ? '#0F1923' : 'white', color: filtroEstado === f ? 'white' : '#8A9BB0' }}>
                   {f === 'todos' ? 'Todos' : ESTADOS[f].label}
                 </button>
               ))}
             </div>
+
+            {/* Filtro de fechas — solo finanzas */}
+            {esFinanzas && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <div>
+                  <label style={{ fontSize: '9px', fontWeight: 700, color: '#8A9BB0', display: 'block', marginBottom: '3px', textTransform: 'uppercase' as const }}>Desde</label>
+                  <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1px solid #E8ECF0', borderRadius: '6px', fontSize: '11px', outline: 'none', color: '#0F1923', boxSizing: 'border-box' as const }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '9px', fontWeight: 700, color: '#8A9BB0', display: 'block', marginBottom: '3px', textTransform: 'uppercase' as const }}>Hasta</label>
+                  <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1px solid #E8ECF0', borderRadius: '6px', fontSize: '11px', outline: 'none', color: '#0F1923', boxSizing: 'border-box' as const }} />
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Contador */}
+          <div style={{ padding: '8px 16px', borderBottom: '1px solid #E8ECF0', background: '#FAFBFC' }}>
+            <span style={{ fontSize: '11px', color: '#8A9BB0' }}>
+              {listaFiltrada.length} solicitud{listaFiltrada.length !== 1 ? 'es' : ''}
+              {listaFiltrada.length !== anticipos.length && ` de ${anticipos.length}`}
+            </span>
+          </div>
+
+          {/* Lista */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {cargando ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#8A9BB0', fontSize: '13px' }}>Cargando...</div>
             ) : listaFiltrada.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#8A9BB0', fontSize: '13px' }}>
+              <div style={{ padding: '40px', textAlign: 'center', color: '#8A9BB0' }}>
                 <p style={{ fontSize: '28px', margin: '0 0 8px' }}>💸</p>
-                Sin solicitudes
+                <p style={{ fontSize: '13px', margin: 0 }}>Sin solicitudes</p>
               </div>
             ) : listaFiltrada.map(ant => (
               <div key={ant.id} onClick={() => seleccionar(ant)}
@@ -211,12 +292,12 @@ const cargar = async (p?: any) => {
                   <BadgeEstado estado={ant.estado} />
                 </div>
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: '0 0 3px' }}>{ant.proveedor}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', color: '#8A9BB0' }}>{ant.moneda} {parseFloat(ant.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
                   <span style={{ fontSize: '10px', color: '#8A9BB0' }}>{new Date(ant.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</span>
                 </div>
                 {esFinanzas && ant.solicitante && (
-                  <p style={{ fontSize: '10px', color: '#BCC6D0', margin: '3px 0 0' }}>Por: {ant.solicitante.nombre || ant.solicitante.email}</p>
+                  <p style={{ fontSize: '10px', color: '#BCC6D0', margin: '3px 0 0' }}>{ant.solicitante.email || ant.solicitante.nombre}</p>
                 )}
               </div>
             ))}
@@ -238,7 +319,7 @@ const cargar = async (p?: any) => {
               <div style={{ background: 'white', borderRadius: '14px', border: '0.5px solid #E8ECF0', padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{seleccionado.numero}</p>
+                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '0 0 4px', textTransform: 'uppercase' as const, letterSpacing: '0.5px', fontWeight: 600 }}>{seleccionado.numero}</p>
                     <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0F1923', margin: '0 0 8px' }}>{seleccionado.proveedor}</h2>
                     <BadgeEstado estado={seleccionado.estado} />
                   </div>
@@ -254,15 +335,15 @@ const cargar = async (p?: any) => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #E8ECF0' }}>
                   {[
-                    { label: 'Solicitante',  value: seleccionado.solicitante?.nombre || seleccionado.solicitante?.email },
-                    { label: 'Facturado a',  value: seleccionado.facturado_a },
-                    { label: 'Descripción',  value: seleccionado.descripcion },
-                    { label: 'Shipment',     value: seleccionado.shipment || '—' },
-                    { label: 'BK/BL',        value: seleccionado.bk_bl || '—' },
-                    { label: 'N° Factura',   value: seleccionado.factura_numero || 'Sin factura' },
+                    { label: 'Solicitante', value: seleccionado.solicitante?.email || seleccionado.solicitante?.nombre },
+                    { label: 'Facturado a', value: seleccionado.facturado_a },
+                    { label: 'Descripción', value: seleccionado.descripcion },
+                    { label: 'Shipment',    value: seleccionado.shipment || '—' },
+                    { label: 'BK/BL',       value: seleccionado.bk_bl || '—' },
+                    { label: 'N° Factura',  value: seleccionado.factura_numero || 'Sin factura aún' },
                   ].map(item => (
                     <div key={item.label}>
-                      <p style={{ ...lbl }}>{item.label}</p>
+                      <p style={{ fontSize: '10px', fontWeight: 700, color: '#8A9BB0', margin: '0 0 3px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>{item.label}</p>
                       <p style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923', margin: 0 }}>{item.value || '—'}</p>
                     </div>
                   ))}
@@ -276,7 +357,7 @@ const cargar = async (p?: any) => {
                     { label: 'Código de pago',  value: seleccionado.codigo_pago },
                   ].map(item => (
                     <div key={item.label}>
-                      <p style={{ ...lbl }}>{item.label}</p>
+                      <p style={{ fontSize: '10px', fontWeight: 700, color: '#8A9BB0', margin: '0 0 3px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>{item.label}</p>
                       <p style={{ fontSize: '13px', fontWeight: 600, color: '#0F1923', margin: 0 }}>{item.value || '—'}</p>
                     </div>
                   ))}
@@ -289,7 +370,7 @@ const cargar = async (p?: any) => {
                 )}
               </div>
 
-              {/* Panel finanzas — gestión */}
+              {/* Gestión finanzas */}
               {esFinanzas && (
                 <div style={{ background: 'white', borderRadius: '14px', border: '0.5px solid #E8ECF0', padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F1923', margin: '0 0 16px' }}>Gestión de pago</h3>
@@ -310,13 +391,12 @@ const cargar = async (p?: any) => {
                     <label style={{ ...lbl }}>Observación</label>
                     <textarea value={obsFinanzas} onChange={e => setObsFinanzas(e.target.value)}
                       rows={2} placeholder="Observaciones de finanzas..."
-                      style={{ ...inp, resize: 'none', fontFamily: 'inherit', lineHeight: '1.5' }} />
+                      style={{ ...inp, resize: 'none' as const, fontFamily: 'inherit', lineHeight: '1.5' }} />
                   </div>
                   <button onClick={guardarCambios} disabled={guardando}
                     style={{ padding: '10px 20px', background: '#C41230', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: guardando ? 0.6 : 1 }}>
                     {guardando ? 'Guardando...' : 'Guardar cambios'}
                   </button>
-
                   {seleccionado.mov_bancario && (
                     <div style={{ marginTop: '12px', padding: '8px 14px', background: '#E8F5E9', borderRadius: '8px', fontSize: '12px', color: '#2E7D32', fontWeight: 600 }}>
                       ✓ MOV: {seleccionado.mov_bancario}
@@ -370,7 +450,7 @@ const cargar = async (p?: any) => {
               <div style={{ background: 'white', borderRadius: '14px', border: '0.5px solid #E8ECF0', padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F1923', margin: '0 0 4px' }}>Regularización con factura</h3>
                 <p style={{ fontSize: '12px', color: '#8A9BB0', margin: '0 0 16px' }}>
-                  El operativo debe subir la factura una vez que el proveedor la emita.
+                  Al subir la factura el estado cambia automáticamente a <strong>Rendido</strong>.
                 </p>
                 {seleccionado.factura_url ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#F3E5F5', borderRadius: '10px', border: '1px solid #CE93D8' }}>
@@ -379,7 +459,8 @@ const cargar = async (p?: any) => {
                       <div>
                         <p style={{ fontSize: '13px', fontWeight: 700, color: '#6A1B9A', margin: 0 }}>Factura cargada</p>
                         <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '2px 0 0' }}>
-                          {seleccionado.factura_nombre} · {seleccionado.fecha_regularizacion && new Date(seleccionado.fecha_regularizacion).toLocaleDateString('es-PE')}
+                          {seleccionado.factura_nombre}
+                          {seleccionado.fecha_regularizacion && ` · ${new Date(seleccionado.fecha_regularizacion).toLocaleDateString('es-PE')}`}
                         </p>
                       </div>
                     </div>
