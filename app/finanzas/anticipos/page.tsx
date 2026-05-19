@@ -12,6 +12,17 @@ const ESTADOS: Record<string, { bg: string; color: string; label: string }> = {
   observado:       { bg: '#FFEBEE', color: '#B71C1C', label: 'Observado'                },
 }
 
+// Formatea fecha YYYY-MM-DD sin problemas de zona horaria
+const fmt = (fecha: string, largo?: boolean): string => {
+  if (!fecha) return '—'
+  const [y, m, d] = fecha.split('T')[0].split('-')
+  if (largo) {
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+    return `${parseInt(d)} de ${meses[parseInt(m) - 1]} de ${y}`
+  }
+  return `${d}/${m}/${y}`
+}
+
 function BadgeEstado({ estado }: { estado: string }) {
   const e = ESTADOS[estado] || { bg: '#F0F2F5', color: '#8A9BB0', label: estado }
   return (
@@ -32,13 +43,13 @@ export default function AnticiposPage() {
   const [fechaDesde,   setFechaDesde]   = useState('')
   const [fechaHasta,   setFechaHasta]   = useState('')
 
-  const [nuevoEstado,   setNuevoEstado]   = useState('')
-  const [obsFinanzas,   setObsFinanzas]   = useState('')
-  const [movBancario,   setMovBancario]   = useState('')
-  const [guardando,     setGuardando]     = useState(false)
-  const [subiendoComp,  setSubiendoComp]  = useState(false)
-  const [subiendoXML,   setSubiendoXML]   = useState(false)
-  const [subiendoPDF,   setSubiendoPDF]   = useState(false)
+  const [nuevoEstado,  setNuevoEstado]  = useState('')
+  const [obsFinanzas,  setObsFinanzas]  = useState('')
+  const [movBancario,  setMovBancario]  = useState('')
+  const [guardando,    setGuardando]    = useState(false)
+  const [subiendoComp, setSubiendoComp] = useState(false)
+  const [subiendoXML,  setSubiendoXML]  = useState(false)
+  const [subiendoPDF,  setSubiendoPDF]  = useState(false)
   const compRef = useRef<HTMLInputElement>(null)
   const xmlRef  = useRef<HTMLInputElement>(null)
   const pdfRef  = useRef<HTMLInputElement>(null)
@@ -129,12 +140,10 @@ export default function AnticiposPage() {
     const { error } = await supabase.storage.from('documentos').upload(path, file, { upsert: true })
     if (error) { alert('Error al subir PDF'); setSubiendoPDF(false); return }
     const { data: { publicUrl } } = supabase.storage.from('documentos').getPublicUrl(path)
-    // Si ya hay XML confirmado → solo agregar PDF, estado ya es rendido
-    // Si no hay XML → cambiar estado a rendido al subir PDF
     const yaRendido = seleccionado.estado === 'rendido'
     const upd: any = {
-      factura_pdf_url:    publicUrl,
-      factura_pdf_nombre: file.name,
+      factura_pdf_url:      publicUrl,
+      factura_pdf_nombre:   file.name,
       fecha_regularizacion: seleccionado.fecha_regularizacion || new Date().toISOString().split('T')[0],
     }
     if (!yaRendido) upd.estado = 'rendido'
@@ -147,70 +156,62 @@ export default function AnticiposPage() {
   }
 
   // ── XML Parser SUNAT ───────────────────────────────────────────────────────
-const parsearXMLFactura = (xmlText: string) => {
-  try {
-    const parser = new DOMParser()
-    const doc    = parser.parseFromString(xmlText, 'text/xml')
+  const parsearXMLFactura = (xmlText: string) => {
+    try {
+      const parser = new DOMParser()
+      const doc    = parser.parseFromString(xmlText, 'text/xml')
+      if (doc.querySelector('parsererror')) return null
 
-    if (doc.querySelector('parsererror')) return null
+      const numero = doc.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
+      const fecha  = doc.getElementsByTagName('cbc:IssueDate')[0]?.textContent?.trim() || ''
+      const moneda = doc.getElementsByTagName('cbc:DocumentCurrencyCode')[0]?.textContent?.trim() || ''
 
-    // Primer cbc:ID del documento = número de factura
-    const numero = doc.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
-    const fecha  = doc.getElementsByTagName('cbc:IssueDate')[0]?.textContent?.trim() || ''
-    const moneda = doc.getElementsByTagName('cbc:DocumentCurrencyCode')[0]?.textContent?.trim() || ''
+      const lmt      = doc.getElementsByTagName('cac:LegalMonetaryTotal')[0]
+      const total    = lmt?.getElementsByTagName('cbc:PayableAmount')[0]?.textContent?.trim() || ''
+      const subtotal = lmt?.getElementsByTagName('cbc:LineExtensionAmount')[0]?.textContent?.trim() || ''
 
-    // Montos desde LegalMonetaryTotal
-    const lmt      = doc.getElementsByTagName('cac:LegalMonetaryTotal')[0]
-    const total    = lmt?.getElementsByTagName('cbc:PayableAmount')[0]?.textContent?.trim() || ''
-    const subtotal = lmt?.getElementsByTagName('cbc:LineExtensionAmount')[0]?.textContent?.trim() || ''
+      const taxTotal = doc.getElementsByTagName('cac:TaxTotal')[0]
+      const igv      = taxTotal?.getElementsByTagName('cbc:TaxAmount')[0]?.textContent?.trim() || ''
 
-    // IGV desde primer TaxTotal
-    const taxTotal = doc.getElementsByTagName('cac:TaxTotal')[0]
-    const igv      = taxTotal?.getElementsByTagName('cbc:TaxAmount')[0]?.textContent?.trim() || ''
-
-    // Emisor — RUC en PartyIdentification/cbc:ID, nombre en PartyLegalEntity/RegistrationName
-    const supplierNode = doc.getElementsByTagName('cac:AccountingSupplierParty')[0]
-    let rucEmisor = '', nombreEmisor = ''
-    if (supplierNode) {
-      rucEmisor    = supplierNode.getElementsByTagName('cac:PartyIdentification')[0]
-                       ?.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
-      nombreEmisor = supplierNode.getElementsByTagName('cac:PartyLegalEntity')[0]
-                       ?.getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
-    }
-
-    // Receptor — misma estructura
-    const customerNode = doc.getElementsByTagName('cac:AccountingCustomerParty')[0]
-    let rucReceptor = '', nombreReceptor = ''
-    if (customerNode) {
-      rucReceptor    = customerNode.getElementsByTagName('cac:PartyIdentification')[0]
+      const supplierNode = doc.getElementsByTagName('cac:AccountingSupplierParty')[0]
+      let rucEmisor = '', nombreEmisor = ''
+      if (supplierNode) {
+        rucEmisor    = supplierNode.getElementsByTagName('cac:PartyIdentification')[0]
                          ?.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
-      nombreReceptor = customerNode.getElementsByTagName('cac:PartyLegalEntity')[0]
+        nombreEmisor = supplierNode.getElementsByTagName('cac:PartyLegalEntity')[0]
                          ?.getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
-    }
+      }
 
-    return { numero, fecha, moneda, total, igv, subtotal, rucEmisor, nombreEmisor, rucReceptor, nombreReceptor, valido: !!numero }
-  } catch { return null }
-}
+      const customerNode = doc.getElementsByTagName('cac:AccountingCustomerParty')[0]
+      let rucReceptor = '', nombreReceptor = ''
+      if (customerNode) {
+        rucReceptor    = customerNode.getElementsByTagName('cac:PartyIdentification')[0]
+                           ?.getElementsByTagName('cbc:ID')[0]?.textContent?.trim() || ''
+        nombreReceptor = customerNode.getElementsByTagName('cac:PartyLegalEntity')[0]
+                           ?.getElementsByTagName('cbc:RegistrationName')[0]?.textContent?.trim() || ''
+      }
 
- const manejarArchivoXML = async (file: File) => {
-  if (!file) return
-  // Leer como ArrayBuffer para manejar el encoding correctamente
-  const buffer  = await file.arrayBuffer()
-  const uint8   = new Uint8Array(buffer)
-  // Detectar encoding del XML declaration
-  const preview = new TextDecoder('utf-8', { fatal: false }).decode(uint8.slice(0, 200))
-  const match   = preview.match(/encoding=['"]([\w-]+)['"]/i)
-  const encoding = match ? match[1] : 'UTF-8'
-  const texto   = new TextDecoder(encoding).decode(buffer)
-  const datos   = parsearXMLFactura(texto)
-  if (datos?.valido) {
-    setDatosXML(datos)
-    setArchivoXML(file)
-    setMostrarXML(true)
-  } else {
-    alert('No se pudo leer el XML. Verifica que sea una factura electrónica SUNAT válida.')
+      return { numero, fecha, moneda, total, igv, subtotal, rucEmisor, nombreEmisor, rucReceptor, nombreReceptor, valido: !!numero }
+    } catch { return null }
   }
-}
+
+  const manejarArchivoXML = async (file: File) => {
+    if (!file) return
+    const buffer   = await file.arrayBuffer()
+    const uint8    = new Uint8Array(buffer)
+    const preview  = new TextDecoder('utf-8', { fatal: false }).decode(uint8.slice(0, 200))
+    const match    = preview.match(/encoding=['"]([\w-]+)['"]/i)
+    const encoding = match ? match[1] : 'UTF-8'
+    const texto    = new TextDecoder(encoding).decode(buffer)
+    const datos    = parsearXMLFactura(texto)
+    if (datos?.valido) {
+      setDatosXML(datos)
+      setArchivoXML(file)
+      setMostrarXML(true)
+    } else {
+      alert('No se pudo leer el XML. Verifica que sea una factura electrónica SUNAT válida.')
+    }
+  }
 
   const confirmarXML = async () => {
     if (!archivoXML || !datosXML || !seleccionado) return
@@ -242,7 +243,7 @@ const parsearXMLFactura = (xmlText: string) => {
     const XLSX = await import('xlsx')
     const datos = listaFiltrada.map(a => ({
       'N° Solicitud':         a.numero,
-      'Fecha':                new Date(a.fecha).toLocaleDateString('es-PE'),
+      'Fecha':                fmt(a.fecha),
       'Solicitante':          a.solicitante?.email || a.solicitante?.nombre || '—',
       'Proveedor':            a.proveedor,
       'Moneda':               a.moneda,
@@ -260,7 +261,7 @@ const parsearXMLFactura = (xmlText: string) => {
       'XML subido':           a.factura_xml_url ? 'Sí' : 'No',
       'PDF subido':           a.factura_pdf_url ? 'Sí' : 'No',
       'Comprobante':          a.comprobante_url ? 'Sí' : 'No',
-      'Fecha rendición':      a.fecha_regularizacion ? new Date(a.fecha_regularizacion).toLocaleDateString('es-PE') : '—',
+      'Fecha rendición':      fmt(a.fecha_regularizacion),
       'Observación finanzas': a.observacion_finanzas || '—',
       'Comentarios':          a.comentarios || '—',
     }))
@@ -322,10 +323,7 @@ const parsearXMLFactura = (xmlText: string) => {
                 </div>
                 <div style={{ background: '#F8F9FA', borderRadius: '10px', padding: '12px 14px' }}>
                   <p style={{ fontSize: '9px', fontWeight: 700, color: '#8A9BB0', textTransform: 'uppercase' as const, margin: '0 0 4px' }}>Fecha emisión</p>
-                  <p style={{ fontSize: '16px', fontWeight: 700, color: '#0F1923', margin: 0 }}>
-                    {datosXML.fecha ? datosXML.fecha.split('-').reverse().join('/') : '—'}
-
-                  </p>
+                  <p style={{ fontSize: '16px', fontWeight: 700, color: '#0F1923', margin: 0 }}>{fmt(datosXML.fecha)}</p>
                 </div>
               </div>
 
@@ -472,13 +470,12 @@ const parsearXMLFactura = (xmlText: string) => {
                 <p style={{ fontSize: '12px', fontWeight: 600, color: '#0F1923', margin: '0 0 3px' }}>{ant.proveedor}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11px', color: '#8A9BB0' }}>{ant.moneda} {parseFloat(ant.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
-                  <span style={{ fontSize: '10px', color: '#8A9BB0' }}>{new Date(ant.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}</span>
+                  <span style={{ fontSize: '10px', color: '#8A9BB0' }}>{fmt(ant.fecha)}</span>
                 </div>
-                {/* Indicadores de documentos */}
                 <div style={{ display: 'flex', gap: '4px', marginTop: '5px' }}>
-                  {ant.comprobante_url    && <span style={{ fontSize: '9px', background: '#E8F5E9', color: '#2E7D32', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>Comprobante</span>}
-                  {ant.factura_xml_url    && <span style={{ fontSize: '9px', background: '#EEF2FF', color: '#3730A3', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>XML</span>}
-                  {ant.factura_pdf_url    && <span style={{ fontSize: '9px', background: '#F3E5F5', color: '#6A1B9A', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>PDF</span>}
+                  {ant.comprobante_url  && <span style={{ fontSize: '9px', background: '#E8F5E9', color: '#2E7D32', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>Comprobante</span>}
+                  {ant.factura_xml_url  && <span style={{ fontSize: '9px', background: '#EEF2FF', color: '#3730A3', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>XML</span>}
+                  {ant.factura_pdf_url  && <span style={{ fontSize: '9px', background: '#F3E5F5', color: '#6A1B9A', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>PDF</span>}
                 </div>
                 {esFinanzas && ant.solicitante && (
                   <p style={{ fontSize: '10px', color: '#BCC6D0', margin: '3px 0 0' }}>{ant.solicitante.email || ant.solicitante.nombre}</p>
@@ -511,9 +508,7 @@ const parsearXMLFactura = (xmlText: string) => {
                     <p style={{ fontSize: '24px', fontWeight: 800, color: '#6A1B9A', margin: 0 }}>
                       {seleccionado.moneda} {parseFloat(seleccionado.monto).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                     </p>
-                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '4px 0 0' }}>
-                      {new Date(seleccionado.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })}
-                    </p>
+                    <p style={{ fontSize: '11px', color: '#8A9BB0', margin: '4px 0 0' }}>{fmt(seleccionado.fecha, true)}</p>
                   </div>
                 </div>
 
@@ -634,22 +629,18 @@ const parsearXMLFactura = (xmlText: string) => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#0F1923', margin: 0 }}>Regularización con factura</h3>
                   {seleccionado.fecha_regularizacion && (
-                    <span style={{ fontSize: '10px', color: '#8A9BB0' }}>
-                      {new Date(seleccionado.fecha_regularizacion).toLocaleDateString('es-PE')}
-                    </span>
+                    <span style={{ fontSize: '10px', color: '#8A9BB0' }}>{fmt(seleccionado.fecha_regularizacion)}</span>
                   )}
                 </div>
                 <p style={{ fontSize: '12px', color: '#8A9BB0', margin: '0 0 16px' }}>
-                  Puedes subir el XML para lectura automática y/o el PDF como representación impresa. Al subir cualquiera el estado cambia a <strong>Rendido</strong>.
+                  Sube el XML para lectura automática y/o el PDF como representación impresa. Al subir cualquiera el estado cambia a <strong>Rendido</strong>.
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
 
                   {/* XML */}
                   <div>
-                    <p style={{ fontSize: '11px', fontWeight: 700, color: '#3730A3', margin: '0 0 8px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
-                      📄 XML electrónico
-                    </p>
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: '#3730A3', margin: '0 0 8px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>📄 XML electrónico</p>
                     {seleccionado.factura_xml_url ? (
                       <div style={{ padding: '10px 12px', background: '#EEF2FF', borderRadius: '10px', border: '1px solid #C7D2FE' }}>
                         <p style={{ fontSize: '12px', fontWeight: 700, color: '#3730A3', margin: '0 0 2px' }}>✓ XML cargado</p>
@@ -683,9 +674,7 @@ const parsearXMLFactura = (xmlText: string) => {
 
                   {/* PDF */}
                   <div>
-                    <p style={{ fontSize: '11px', fontWeight: 700, color: '#6A1B9A', margin: '0 0 8px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
-                      🧾 PDF / Imagen
-                    </p>
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: '#6A1B9A', margin: '0 0 8px', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>🧾 PDF / Imagen</p>
                     {seleccionado.factura_pdf_url ? (
                       <div style={{ padding: '10px 12px', background: '#F3E5F5', borderRadius: '10px', border: '1px solid #CE93D8' }}>
                         <p style={{ fontSize: '12px', fontWeight: 700, color: '#6A1B9A', margin: '0 0 2px' }}>✓ PDF cargado</p>
@@ -719,19 +708,15 @@ const parsearXMLFactura = (xmlText: string) => {
 
                 </div>
 
-                {/* Estado de regularización */}
                 {(seleccionado.factura_xml_url || seleccionado.factura_pdf_url) && (
                   <div style={{ marginTop: '12px', padding: '10px 14px', background: '#E8F5E9', borderRadius: '8px', fontSize: '12px', color: '#2E7D32', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     ✅ Factura regularizada
-                    {seleccionado.factura_xml_url && seleccionado.factura_pdf_url && (
-                      <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>XML + PDF</span>
-                    )}
-                    {seleccionado.factura_xml_url && !seleccionado.factura_pdf_url && (
-                      <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>Solo XML</span>
-                    )}
-                    {!seleccionado.factura_xml_url && seleccionado.factura_pdf_url && (
-                      <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>Solo PDF</span>
-                    )}
+                    {seleccionado.factura_xml_url && seleccionado.factura_pdf_url
+                      ? <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>XML + PDF</span>
+                      : seleccionado.factura_xml_url
+                      ? <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>Solo XML</span>
+                      : <span style={{ fontSize: '10px', background: '#A5D6A7', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>Solo PDF</span>
+                    }
                   </div>
                 )}
               </div>
