@@ -323,7 +323,8 @@ const parsearXMLFactura = (xmlText: string) => {
                 <div style={{ background: '#F8F9FA', borderRadius: '10px', padding: '12px 14px' }}>
                   <p style={{ fontSize: '9px', fontWeight: 700, color: '#8A9BB0', textTransform: 'uppercase' as const, margin: '0 0 4px' }}>Fecha emisión</p>
                   <p style={{ fontSize: '16px', fontWeight: 700, color: '#0F1923', margin: 0 }}>
-                    {datosXML.fecha ? new Date(datosXML.fecha).toLocaleDateString('es-PE') : '—'}
+                    {datosXML.fecha ? datosXML.fecha.split('-').reverse().join('/') : '—'}
+
                   </p>
                 </div>
               </div>
